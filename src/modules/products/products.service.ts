@@ -142,12 +142,12 @@ export class ProductsService {
     const product = await this.findById(id);
 
     // Validate category if being updated
-    if (dto.categoryId !== undefined && dto.categoryId !== null) {
+    if (dto.categoryId) {
       await this.validateCategory(dto.categoryId);
     }
 
     // Validate pricing logic if price or salePrice is being updated
-    const newPrice = dto.price !== undefined ? dto.price : product.price;
+    const newPrice = dto.price ?? product.price;
     const newSalePrice =
       dto.salePrice !== undefined ? dto.salePrice : product.salePrice;
     this.validatePricing(newPrice, newSalePrice);
