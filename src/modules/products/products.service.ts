@@ -2,18 +2,21 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { CreateProductDto, UpdateProductDto, ProductQueryDto } from './dto';
 import { PaginatedResponseDto } from '../../common/dto';
+import { CategoriesService } from '../categories/categories.service';
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
+    private readonly categoriesService: CategoriesService,
   ) {}
 
   async findAllPublic(
@@ -123,12 +126,32 @@ export class ProductsService {
       throw new ConflictException(`Product with SKU ${dto.sku} already exists`);
     }
 
+    // Validate category if provided
+    if (dto.categoryId) {
+      await this.validateCategory(dto.categoryId);
+    }
+
+    // Validate pricing logic
+    this.validatePricing(dto.price, dto.salePrice);
+
     const product = this.productRepository.create(dto);
     return this.productRepository.save(product);
   }
 
   async update(id: string, dto: UpdateProductDto): Promise<Product> {
     const product = await this.findById(id);
+
+    // Validate category if being updated
+    if (dto.categoryId !== undefined && dto.categoryId !== null) {
+      await this.validateCategory(dto.categoryId);
+    }
+
+    // Validate pricing logic if price or salePrice is being updated
+    const newPrice = dto.price !== undefined ? dto.price : product.price;
+    const newSalePrice =
+      dto.salePrice !== undefined ? dto.salePrice : product.salePrice;
+    this.validatePricing(newPrice, newSalePrice);
+
     Object.assign(product, dto);
     return this.productRepository.save(product);
   }
@@ -145,5 +168,40 @@ export class ProductsService {
     }
     await this.productRepository.restore(id);
     return this.findById(id);
+  }
+
+  /**
+   * Validates that a category exists and is active
+   * @param categoryId - The category ID to validate
+   * @throws NotFoundException if category doesn't exist
+   * @throws BadRequestException if category is not active
+   */
+  private async validateCategory(categoryId: string): Promise<void> {
+    const category = await this.categoriesService.findById(categoryId);
+
+    if (!category.isActive) {
+      throw new BadRequestException(
+        `Category with ID ${categoryId} is not active`,
+      );
+    }
+  }
+
+  /**
+   * Validates pricing logic for products
+   * @param price - The regular price
+   * @param salePrice - The sale price (optional)
+   * @throws BadRequestException if salePrice > price or salePrice < 0
+   */
+  private validatePricing(price: number, salePrice?: number): void {
+    if (salePrice !== undefined && salePrice !== null) {
+      if (salePrice < 0) {
+        throw new BadRequestException('Sale price cannot be negative');
+      }
+      if (salePrice > price) {
+        throw new BadRequestException(
+          'Sale price cannot be greater than regular price',
+        );
+      }
+    }
   }
 }

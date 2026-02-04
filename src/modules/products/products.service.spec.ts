@@ -4,13 +4,26 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { Product } from './entities/product.entity';
+import { CategoriesService } from '../categories/categories.service';
 
 describe('ProductsService', () => {
   let service: ProductsService;
   let repository: any;
+  let categoriesService: any;
+
+  const mockCategory = {
+    id: 'category-uuid',
+    name: 'Test Category',
+    slug: 'test-category',
+    isActive: true,
+  };
 
   const mockProduct: Product = {
     id: 'product-uuid',
@@ -60,15 +73,21 @@ describe('ProductsService', () => {
       restore: jest.fn(),
     };
 
+    const mockCategoriesService = {
+      findById: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
         { provide: getRepositoryToken(Product), useValue: mockRepository },
+        { provide: CategoriesService, useValue: mockCategoriesService },
       ],
     }).compile();
 
     service = module.get<ProductsService>(ProductsService);
     repository = module.get(getRepositoryToken(Product));
+    categoriesService = module.get<CategoriesService>(CategoriesService);
   });
 
   afterEach(() => {
@@ -178,6 +197,148 @@ describe('ProductsService', () => {
         service.create({ sku: 'SKU-001', name: 'Product', price: 100 }),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('should validate category when categoryId is provided', async () => {
+      repository.findOne.mockResolvedValue(null);
+      categoriesService.findById.mockResolvedValue(mockCategory);
+      repository.create.mockReturnValue(mockProduct);
+      repository.save.mockResolvedValue(mockProduct);
+
+      const createDto = {
+        sku: 'SKU-002',
+        name: 'Test Product',
+        price: 100,
+        categoryId: 'category-uuid',
+      };
+
+      await service.create(createDto);
+
+      expect(categoriesService.findById).toHaveBeenCalledWith('category-uuid');
+    });
+
+    it('should throw NotFoundException when category does not exist', async () => {
+      repository.findOne.mockResolvedValue(null);
+      categoriesService.findById.mockRejectedValue(
+        new NotFoundException('Category with ID category-uuid not found'),
+      );
+
+      const createDto = {
+        sku: 'SKU-002',
+        name: 'Test Product',
+        price: 100,
+        categoryId: 'category-uuid',
+      };
+
+      await expect(service.create(createDto)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw BadRequestException when category is not active', async () => {
+      repository.findOne.mockResolvedValue(null);
+      categoriesService.findById.mockResolvedValue({
+        ...mockCategory,
+        isActive: false,
+      });
+
+      const createDto = {
+        sku: 'SKU-002',
+        name: 'Test Product',
+        price: 100,
+        categoryId: 'category-uuid',
+      };
+
+      await expect(service.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should create product without categoryId validation when not provided', async () => {
+      repository.findOne.mockResolvedValue(null);
+      repository.create.mockReturnValue(mockProduct);
+      repository.save.mockResolvedValue(mockProduct);
+
+      const createDto = {
+        sku: 'SKU-003',
+        name: 'Test Product',
+        price: 100,
+      };
+
+      await service.create(createDto);
+
+      expect(categoriesService.findById).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException when salePrice is greater than price', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      const createDto = {
+        sku: 'SKU-004',
+        name: 'Test Product',
+        price: 100,
+        salePrice: 150,
+      };
+
+      await expect(service.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.create(createDto)).rejects.toThrow(
+        'Sale price cannot be greater than regular price',
+      );
+    });
+
+    it('should throw BadRequestException when salePrice is negative', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      const createDto = {
+        sku: 'SKU-005',
+        name: 'Test Product',
+        price: 100,
+        salePrice: -10,
+      };
+
+      await expect(service.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.create(createDto)).rejects.toThrow(
+        'Sale price cannot be negative',
+      );
+    });
+
+    it('should create product with valid salePrice less than price', async () => {
+      repository.findOne.mockResolvedValue(null);
+      repository.create.mockReturnValue(mockProduct);
+      repository.save.mockResolvedValue(mockProduct);
+
+      const createDto = {
+        sku: 'SKU-006',
+        name: 'Test Product',
+        price: 100,
+        salePrice: 80,
+      };
+
+      const result = await service.create(createDto);
+
+      expect(result).toEqual(mockProduct);
+      expect(repository.create).toHaveBeenCalledWith(createDto);
+    });
+
+    it('should create product with salePrice equal to price', async () => {
+      repository.findOne.mockResolvedValue(null);
+      repository.create.mockReturnValue(mockProduct);
+      repository.save.mockResolvedValue(mockProduct);
+
+      const createDto = {
+        sku: 'SKU-007',
+        name: 'Test Product',
+        price: 100,
+        salePrice: 100,
+      };
+
+      const result = await service.create(createDto);
+
+      expect(result).toEqual(mockProduct);
+    });
   });
 
   describe('update', () => {
@@ -188,6 +349,71 @@ describe('ProductsService', () => {
       const result = await service.update('product-uuid', { name: 'Updated' });
 
       expect(result.name).toBe('Updated');
+    });
+
+    it('should validate category when categoryId is being updated', async () => {
+      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      categoriesService.findById.mockResolvedValue(mockCategory);
+      repository.save.mockResolvedValue(mockProduct);
+
+      await service.update('product-uuid', { categoryId: 'new-category-uuid' });
+
+      expect(categoriesService.findById).toHaveBeenCalledWith(
+        'new-category-uuid',
+      );
+    });
+
+    it('should throw BadRequestException when updating to inactive category', async () => {
+      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      categoriesService.findById.mockResolvedValue({
+        ...mockCategory,
+        isActive: false,
+      });
+
+      await expect(
+        service.update('product-uuid', { categoryId: 'category-uuid' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when updating salePrice greater than price', async () => {
+      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+
+      await expect(
+        service.update('product-uuid', { salePrice: 150 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when updating salePrice to negative', async () => {
+      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+
+      await expect(
+        service.update('product-uuid', { salePrice: -10 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should validate pricing when updating price', async () => {
+      mockQueryBuilder.getOne.mockResolvedValue({
+        ...mockProduct,
+        price: 100,
+        salePrice: 80,
+      });
+      repository.save.mockResolvedValue(mockProduct);
+
+      await expect(
+        service.update('product-uuid', { price: 50 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should allow valid price and salePrice update', async () => {
+      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      repository.save.mockResolvedValue(mockProduct);
+
+      const result = await service.update('product-uuid', {
+        price: 120,
+        salePrice: 90,
+      });
+
+      expect(result).toEqual(mockProduct);
     });
   });
 
