@@ -35,13 +35,13 @@ export class SettingsService implements OnModuleInit {
     },
     {
       key: 'currency',
-      value: 'ARS',
+      value: 'PEN',
       description: 'Moneda por defecto',
       isPublic: true,
     },
     {
       key: 'currencySymbol',
-      value: '$',
+      value: 'S/',
       description: 'Símbolo de la moneda',
       isPublic: true,
     },
