@@ -207,7 +207,7 @@ export class AnalyticsService {
       .groupBy('item.productId')
       .addGroupBy('item.productName')
       .addGroupBy('item.productSku')
-      .orderBy('totalQuantity', 'DESC')
+      .orderBy('"totalQuantity"', 'DESC')
       .limit(limit)
       .getRawMany();
 
