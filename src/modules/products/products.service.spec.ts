@@ -1,21 +1,25 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/unbound-method */
+
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import {
   NotFoundException,
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { ProductsService } from './products.service';
-import { Product } from './entities/product.entity';
+import { ProductsService } from './domain/services/products-domain.service';
+import { ProductModel } from './domain/models/product.model';
+import {
+  PRODUCT_REPOSITORY,
+  ProductRepositoryPort,
+} from './domain/ports/out/product-repository.port';
 import { CategoriesService } from '../categories/categories.service';
 
 describe('ProductsService', () => {
   let service: ProductsService;
-  let repository: any;
+  let productRepository: jest.Mocked<ProductRepositoryPort>;
   let categoriesService: any;
 
   const mockCategory = {
@@ -25,7 +29,7 @@ describe('ProductsService', () => {
     isActive: true,
   };
 
-  const mockProduct: Product = {
+  const mockProduct: ProductModel = Object.assign(new ProductModel(), {
     id: 'product-uuid',
     sku: 'SKU-001',
     name: 'Test Product',
@@ -42,36 +46,22 @@ describe('ProductsService', () => {
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null as any,
-    get effectivePrice() {
-      return this.salePrice && this.salePrice > 0 ? this.salePrice : this.price;
-    },
-    get isInStock() {
-      if (!this.trackInventory) return true;
-      return this.stockQuantity > 0;
-    },
-  };
+  });
 
-  const mockQueryBuilder = {
-    leftJoinAndSelect: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    withDeleted: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    skip: jest.fn().mockReturnThis(),
-    take: jest.fn().mockReturnThis(),
-    getManyAndCount: jest.fn(),
-    getOne: jest.fn(),
+  const mockProductRepository: jest.Mocked<ProductRepositoryPort> = {
+    findAllPublic: jest.fn(),
+    findAllAdmin: jest.fn(),
+    findById: jest.fn(),
+    findByIdPublic: jest.fn(),
+    findBySku: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    softRemove: jest.fn(),
+    restore: jest.fn(),
   };
 
   beforeEach(async () => {
-    const mockRepository = {
-      createQueryBuilder: jest.fn(() => mockQueryBuilder),
-      findOne: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-      softRemove: jest.fn(),
-      restore: jest.fn(),
-    };
+    jest.clearAllMocks();
 
     const mockCategoriesService = {
       findById: jest.fn(),
@@ -80,13 +70,13 @@ describe('ProductsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
-        { provide: getRepositoryToken(Product), useValue: mockRepository },
+        { provide: PRODUCT_REPOSITORY, useValue: mockProductRepository },
         { provide: CategoriesService, useValue: mockCategoriesService },
       ],
     }).compile();
 
     service = module.get<ProductsService>(ProductsService);
-    repository = module.get(getRepositoryToken(Product));
+    productRepository = module.get(PRODUCT_REPOSITORY);
     categoriesService = module.get<CategoriesService>(CategoriesService);
   });
 
@@ -96,45 +86,56 @@ describe('ProductsService', () => {
 
   describe('findAllPublic', () => {
     it('should return paginated visible products', async () => {
-      mockQueryBuilder.getManyAndCount.mockResolvedValue([[mockProduct], 1]);
+      productRepository.findAllPublic.mockResolvedValue({
+        data: [mockProduct],
+        total: 1,
+      });
 
       const result = await service.findAllPublic({ page: 1, limit: 10 });
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
       expect(result.meta.page).toBe(1);
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
-        'product.isVisible = :isVisible',
-        { isVisible: true },
-      );
+      expect(productRepository.findAllPublic).toHaveBeenCalledWith({
+        page: 1,
+        limit: 10,
+      });
     });
 
     it('should filter by categoryId', async () => {
-      mockQueryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      productRepository.findAllPublic.mockResolvedValue({
+        data: [],
+        total: 0,
+      });
 
       await service.findAllPublic({ page: 1, limit: 10, categoryId: 'cat-1' });
 
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'product.categoryId = :categoryId',
-        { categoryId: 'cat-1' },
-      );
+      expect(productRepository.findAllPublic).toHaveBeenCalledWith({
+        page: 1,
+        limit: 10,
+        categoryId: 'cat-1',
+      });
     });
 
     it('should filter by search term', async () => {
-      mockQueryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      productRepository.findAllPublic.mockResolvedValue({
+        data: [],
+        total: 0,
+      });
 
       await service.findAllPublic({ page: 1, limit: 10, search: 'test' });
 
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        '(product.name ILIKE :search OR product.description ILIKE :search OR product.sku ILIKE :search)',
-        { search: '%test%' },
-      );
+      expect(productRepository.findAllPublic).toHaveBeenCalledWith({
+        page: 1,
+        limit: 10,
+        search: 'test',
+      });
     });
   });
 
   describe('findById', () => {
     it('should return a product when found', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(mockProduct);
 
       const result = await service.findById('product-uuid');
 
@@ -142,7 +143,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw NotFoundException when product not found', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(null);
+      productRepository.findById.mockResolvedValue(null);
 
       await expect(service.findById('unknown-uuid')).rejects.toThrow(
         NotFoundException,
@@ -152,19 +153,18 @@ describe('ProductsService', () => {
 
   describe('findByIdPublic', () => {
     it('should return a visible product', async () => {
-      repository.findOne.mockResolvedValue(mockProduct);
+      productRepository.findByIdPublic.mockResolvedValue(mockProduct);
 
       const result = await service.findByIdPublic('product-uuid');
 
       expect(result).toEqual(mockProduct);
-      expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: 'product-uuid', isVisible: true, isActive: true },
-        relations: ['category'],
-      });
+      expect(productRepository.findByIdPublic).toHaveBeenCalledWith(
+        'product-uuid',
+      );
     });
 
     it('should throw NotFoundException when product not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      productRepository.findByIdPublic.mockResolvedValue(null);
 
       await expect(service.findByIdPublic('unknown-uuid')).rejects.toThrow(
         NotFoundException,
@@ -174,9 +174,8 @@ describe('ProductsService', () => {
 
   describe('create', () => {
     it('should create a new product', async () => {
-      repository.findOne.mockResolvedValue(null);
-      repository.create.mockReturnValue(mockProduct);
-      repository.save.mockResolvedValue(mockProduct);
+      productRepository.findBySku.mockResolvedValue(null);
+      productRepository.create.mockResolvedValue(mockProduct);
 
       const createDto = {
         sku: 'SKU-001',
@@ -187,11 +186,11 @@ describe('ProductsService', () => {
       const result = await service.create(createDto);
 
       expect(result).toEqual(mockProduct);
-      expect(repository.create).toHaveBeenCalledWith(createDto);
+      expect(productRepository.create).toHaveBeenCalledWith(createDto);
     });
 
     it('should throw ConflictException when SKU already exists', async () => {
-      repository.findOne.mockResolvedValue(mockProduct);
+      productRepository.findBySku.mockResolvedValue(mockProduct);
 
       await expect(
         service.create({ sku: 'SKU-001', name: 'Product', price: 100 }),
@@ -199,10 +198,9 @@ describe('ProductsService', () => {
     });
 
     it('should validate category when categoryId is provided', async () => {
-      repository.findOne.mockResolvedValue(null);
+      productRepository.findBySku.mockResolvedValue(null);
       categoriesService.findById.mockResolvedValue(mockCategory);
-      repository.create.mockReturnValue(mockProduct);
-      repository.save.mockResolvedValue(mockProduct);
+      productRepository.create.mockResolvedValue(mockProduct);
 
       const createDto = {
         sku: 'SKU-002',
@@ -217,7 +215,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw NotFoundException when category does not exist', async () => {
-      repository.findOne.mockResolvedValue(null);
+      productRepository.findBySku.mockResolvedValue(null);
       categoriesService.findById.mockRejectedValue(
         new NotFoundException('Category with ID category-uuid not found'),
       );
@@ -235,7 +233,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw BadRequestException when category is not active', async () => {
-      repository.findOne.mockResolvedValue(null);
+      productRepository.findBySku.mockResolvedValue(null);
       categoriesService.findById.mockResolvedValue({
         ...mockCategory,
         isActive: false,
@@ -254,9 +252,8 @@ describe('ProductsService', () => {
     });
 
     it('should create product without categoryId validation when not provided', async () => {
-      repository.findOne.mockResolvedValue(null);
-      repository.create.mockReturnValue(mockProduct);
-      repository.save.mockResolvedValue(mockProduct);
+      productRepository.findBySku.mockResolvedValue(null);
+      productRepository.create.mockResolvedValue(mockProduct);
 
       const createDto = {
         sku: 'SKU-003',
@@ -270,7 +267,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw BadRequestException when salePrice is greater than price', async () => {
-      repository.findOne.mockResolvedValue(null);
+      productRepository.findBySku.mockResolvedValue(null);
 
       const createDto = {
         sku: 'SKU-004',
@@ -288,7 +285,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw BadRequestException when salePrice is negative', async () => {
-      repository.findOne.mockResolvedValue(null);
+      productRepository.findBySku.mockResolvedValue(null);
 
       const createDto = {
         sku: 'SKU-005',
@@ -306,9 +303,8 @@ describe('ProductsService', () => {
     });
 
     it('should create product with valid salePrice less than price', async () => {
-      repository.findOne.mockResolvedValue(null);
-      repository.create.mockReturnValue(mockProduct);
-      repository.save.mockResolvedValue(mockProduct);
+      productRepository.findBySku.mockResolvedValue(null);
+      productRepository.create.mockResolvedValue(mockProduct);
 
       const createDto = {
         sku: 'SKU-006',
@@ -320,13 +316,12 @@ describe('ProductsService', () => {
       const result = await service.create(createDto);
 
       expect(result).toEqual(mockProduct);
-      expect(repository.create).toHaveBeenCalledWith(createDto);
+      expect(productRepository.create).toHaveBeenCalledWith(createDto);
     });
 
     it('should create product with salePrice equal to price', async () => {
-      repository.findOne.mockResolvedValue(null);
-      repository.create.mockReturnValue(mockProduct);
-      repository.save.mockResolvedValue(mockProduct);
+      productRepository.findBySku.mockResolvedValue(null);
+      productRepository.create.mockResolvedValue(mockProduct);
 
       const createDto = {
         sku: 'SKU-007',
@@ -343,8 +338,11 @@ describe('ProductsService', () => {
 
   describe('update', () => {
     it('should update a product', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
-      repository.save.mockResolvedValue({ ...mockProduct, name: 'Updated' });
+      productRepository.findById.mockResolvedValue(mockProduct);
+      productRepository.save.mockResolvedValue({
+        ...mockProduct,
+        name: 'Updated',
+      } as ProductModel);
 
       const result = await service.update('product-uuid', { name: 'Updated' });
 
@@ -352,9 +350,9 @@ describe('ProductsService', () => {
     });
 
     it('should validate category when categoryId is being updated', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(mockProduct);
       categoriesService.findById.mockResolvedValue(mockCategory);
-      repository.save.mockResolvedValue(mockProduct);
+      productRepository.save.mockResolvedValue(mockProduct);
 
       await service.update('product-uuid', { categoryId: 'new-category-uuid' });
 
@@ -364,7 +362,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw BadRequestException when updating to inactive category', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(mockProduct);
       categoriesService.findById.mockResolvedValue({
         ...mockCategory,
         isActive: false,
@@ -376,7 +374,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw BadRequestException when updating salePrice greater than price', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(mockProduct);
 
       await expect(
         service.update('product-uuid', { salePrice: 150 }),
@@ -384,7 +382,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw BadRequestException when updating salePrice to negative', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(mockProduct);
 
       await expect(
         service.update('product-uuid', { salePrice: -10 }),
@@ -392,12 +390,13 @@ describe('ProductsService', () => {
     });
 
     it('should validate pricing when updating price', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue({
-        ...mockProduct,
-        price: 100,
-        salePrice: 80,
-      });
-      repository.save.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(
+        Object.assign(new ProductModel(), {
+          ...mockProduct,
+          price: 100,
+          salePrice: 80,
+        }),
+      );
 
       await expect(
         service.update('product-uuid', { price: 50 }),
@@ -405,8 +404,8 @@ describe('ProductsService', () => {
     });
 
     it('should allow valid price and salePrice update', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
-      repository.save.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(mockProduct);
+      productRepository.save.mockResolvedValue(mockProduct);
 
       const result = await service.update('product-uuid', {
         price: 120,
@@ -419,30 +418,33 @@ describe('ProductsService', () => {
 
   describe('delete', () => {
     it('should soft delete a product', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
-      repository.softRemove.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(mockProduct);
+      productRepository.softRemove.mockResolvedValue(undefined);
 
       await service.delete('product-uuid');
 
-      expect(repository.softRemove).toHaveBeenCalledWith(mockProduct);
+      expect(productRepository.softRemove).toHaveBeenCalledWith(mockProduct);
     });
   });
 
   describe('restore', () => {
     it('should restore a deleted product', async () => {
-      const deletedProduct = { ...mockProduct, deletedAt: new Date() };
-      mockQueryBuilder.getOne.mockResolvedValueOnce(deletedProduct);
-      mockQueryBuilder.getOne.mockResolvedValueOnce(mockProduct);
-      repository.restore.mockResolvedValue({ affected: 1 });
+      const deletedProduct = Object.assign(new ProductModel(), {
+        ...mockProduct,
+        deletedAt: new Date(),
+      });
+      productRepository.findById.mockResolvedValueOnce(deletedProduct);
+      productRepository.restore.mockResolvedValue(undefined);
+      productRepository.findById.mockResolvedValueOnce(mockProduct);
 
       const result = await service.restore('product-uuid');
 
-      expect(repository.restore).toHaveBeenCalledWith('product-uuid');
+      expect(productRepository.restore).toHaveBeenCalledWith('product-uuid');
       expect(result).toEqual(mockProduct);
     });
 
     it('should throw ConflictException when product is not deleted', async () => {
-      mockQueryBuilder.getOne.mockResolvedValue(mockProduct);
+      productRepository.findById.mockResolvedValue(mockProduct);
 
       await expect(service.restore('product-uuid')).rejects.toThrow(
         ConflictException,
