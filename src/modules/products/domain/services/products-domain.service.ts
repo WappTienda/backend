@@ -111,6 +111,9 @@ export class ProductsService implements ProductsUseCasePort {
 
   /**
    * Validates that a category exists and is active
+   * @param categoryId - The category ID to validate
+   * @throws NotFoundException if category doesn't exist
+   * @throws BadRequestException if category is not active
    */
   private async validateCategory(categoryId: string): Promise<void> {
     const category = await this.categoriesService.findById(categoryId);
@@ -124,6 +127,9 @@ export class ProductsService implements ProductsUseCasePort {
 
   /**
    * Validates pricing logic for products
+   * @param price - The regular price
+   * @param salePrice - The sale price (optional)
+   * @throws BadRequestException if salePrice > price or salePrice < 0
    */
   private validatePricing(price: number, salePrice?: number): void {
     if (salePrice !== undefined && salePrice !== null) {
