@@ -1,16 +1,18 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Repository } from 'typeorm';
-import { UsersService } from './users.service';
-import { User, UserRole } from './entities/user.entity';
+import { UsersService } from './domain/services/users-domain.service';
+import { UserModel, UserRole } from './domain/models/user.model';
+import {
+  USER_REPOSITORY,
+  UserRepositoryPort,
+} from './domain/ports/out/user-repository.port';
 
 describe('UsersService', () => {
   let service: UsersService;
-  let repository: jest.Mocked<Repository<User>>;
+  let repository: jest.Mocked<UserRepositoryPort>;
 
-  const mockUser: User = {
+  const mockUser: UserModel = {
     id: 'user-uuid',
     email: 'test@example.com',
     password: 'hashedPassword',
@@ -22,10 +24,10 @@ describe('UsersService', () => {
   };
 
   beforeEach(async () => {
-    const mockRepository = {
-      findOne: jest.fn(),
+    const mockRepository: jest.Mocked<UserRepositoryPort> = {
+      findByEmail: jest.fn(),
+      findById: jest.fn(),
       create: jest.fn(),
-      save: jest.fn(),
     };
 
     const mockConfigService = {
@@ -35,29 +37,27 @@ describe('UsersService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        { provide: getRepositoryToken(User), useValue: mockRepository },
+        { provide: USER_REPOSITORY, useValue: mockRepository },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-    repository = module.get(getRepositoryToken(User));
+    repository = module.get(USER_REPOSITORY);
   });
 
   describe('findByEmail', () => {
     it('should return a user when found', async () => {
-      repository.findOne.mockResolvedValue(mockUser);
+      repository.findByEmail.mockResolvedValue(mockUser);
 
       const result = await service.findByEmail('test@example.com');
 
       expect(result).toEqual(mockUser);
-      expect(repository.findOne).toHaveBeenCalledWith({
-        where: { email: 'test@example.com' },
-      });
+      expect(repository.findByEmail).toHaveBeenCalledWith('test@example.com');
     });
 
     it('should return null when user not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      repository.findByEmail.mockResolvedValue(null);
 
       const result = await service.findByEmail('unknown@example.com');
 
@@ -67,18 +67,16 @@ describe('UsersService', () => {
 
   describe('findById', () => {
     it('should return a user when found', async () => {
-      repository.findOne.mockResolvedValue(mockUser);
+      repository.findById.mockResolvedValue(mockUser);
 
       const result = await service.findById('user-uuid');
 
       expect(result).toEqual(mockUser);
-      expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: 'user-uuid' },
-      });
+      expect(repository.findById).toHaveBeenCalledWith('user-uuid');
     });
 
     it('should return null when user not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      repository.findById.mockResolvedValue(null);
 
       const result = await service.findById('unknown-uuid');
 
@@ -94,14 +92,12 @@ describe('UsersService', () => {
         name: 'New User',
       };
 
-      repository.create.mockReturnValue(mockUser);
-      repository.save.mockResolvedValue(mockUser);
+      repository.create.mockResolvedValue(mockUser);
 
       const result = await service.create(userData);
 
       expect(result).toEqual(mockUser);
       expect(repository.create).toHaveBeenCalledWith(userData);
-      expect(repository.save).toHaveBeenCalled();
     });
   });
 });
