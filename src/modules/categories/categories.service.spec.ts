@@ -1,31 +1,35 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, ConflictException } from '@nestjs/common';
-import { Repository } from 'typeorm';
-import { CategoriesService } from './categories.service';
-import { Category } from './entities/category.entity';
+import { CategoriesService } from './domain/services/categories-domain.service';
+import {
+  CATEGORY_REPOSITORY,
+  CategoryRepositoryPort,
+} from './domain/ports/out/category-repository.port';
+import { CategoryModel } from './domain/models/category.model';
 
 describe('CategoriesService', () => {
   let service: CategoriesService;
-  let repository: jest.Mocked<Repository<Category>>;
+  let repository: jest.Mocked<CategoryRepositoryPort>;
 
-  const mockCategory: Category = {
+  const mockCategory: CategoryModel = {
     id: 'category-uuid',
     name: 'Electronics',
     slug: 'electronics',
     description: 'Electronic devices',
     order: 1,
     isActive: true,
-    products: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   };
 
   beforeEach(async () => {
-    const mockRepository = {
-      find: jest.fn(),
-      findOne: jest.fn(),
+    const mockRepository: jest.Mocked<CategoryRepositoryPort> = {
+      findAll: jest.fn(),
+      findById: jest.fn(),
+      findByName: jest.fn(),
+      findBySlug: jest.fn(),
+      findByNameOrSlug: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
       remove: jest.fn(),
@@ -34,42 +38,36 @@ describe('CategoriesService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CategoriesService,
-        { provide: getRepositoryToken(Category), useValue: mockRepository },
+        { provide: CATEGORY_REPOSITORY, useValue: mockRepository },
       ],
     }).compile();
 
     service = module.get<CategoriesService>(CategoriesService);
-    repository = module.get(getRepositoryToken(Category));
+    repository = module.get(CATEGORY_REPOSITORY);
   });
 
   describe('findAll', () => {
     it('should return all categories', async () => {
-      repository.find.mockResolvedValue([mockCategory]);
+      repository.findAll.mockResolvedValue([mockCategory]);
 
       const result = await service.findAll();
 
       expect(result).toEqual([mockCategory]);
-      expect(repository.find).toHaveBeenCalledWith({
-        where: {},
-        order: { order: 'ASC', name: 'ASC' },
-      });
+      expect(repository.findAll).toHaveBeenCalledWith(false);
     });
 
     it('should return only active categories when onlyActive is true', async () => {
-      repository.find.mockResolvedValue([mockCategory]);
+      repository.findAll.mockResolvedValue([mockCategory]);
 
       await service.findAll(true);
 
-      expect(repository.find).toHaveBeenCalledWith({
-        where: { isActive: true },
-        order: { order: 'ASC', name: 'ASC' },
-      });
+      expect(repository.findAll).toHaveBeenCalledWith(true);
     });
   });
 
   describe('findById', () => {
     it('should return a category when found', async () => {
-      repository.findOne.mockResolvedValue(mockCategory);
+      repository.findById.mockResolvedValue(mockCategory);
 
       const result = await service.findById('category-uuid');
 
@@ -77,7 +75,7 @@ describe('CategoriesService', () => {
     });
 
     it('should throw NotFoundException when category not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      repository.findById.mockResolvedValue(null);
 
       await expect(service.findById('unknown-uuid')).rejects.toThrow(
         NotFoundException,
@@ -87,9 +85,8 @@ describe('CategoriesService', () => {
 
   describe('create', () => {
     it('should create a new category', async () => {
-      repository.findOne.mockResolvedValue(null);
-      repository.create.mockReturnValue(mockCategory);
-      repository.save.mockResolvedValue(mockCategory);
+      repository.findByNameOrSlug.mockResolvedValue(null);
+      repository.create.mockResolvedValue(mockCategory);
 
       const result = await service.create({ name: 'Electronics' });
 
@@ -97,7 +94,7 @@ describe('CategoriesService', () => {
     });
 
     it('should throw ConflictException when name already exists', async () => {
-      repository.findOne.mockResolvedValue(mockCategory);
+      repository.findByNameOrSlug.mockResolvedValue(mockCategory);
 
       await expect(service.create({ name: 'Electronics' })).rejects.toThrow(
         ConflictException,
@@ -105,9 +102,8 @@ describe('CategoriesService', () => {
     });
 
     it('should generate slug from name', async () => {
-      repository.findOne.mockResolvedValue(null);
-      repository.create.mockReturnValue(mockCategory);
-      repository.save.mockResolvedValue(mockCategory);
+      repository.findByNameOrSlug.mockResolvedValue(null);
+      repository.create.mockResolvedValue(mockCategory);
 
       await service.create({ name: 'Test Category' });
 
@@ -120,9 +116,8 @@ describe('CategoriesService', () => {
 
   describe('update', () => {
     it('should update a category', async () => {
-      repository.findOne
-        .mockResolvedValueOnce(mockCategory)
-        .mockResolvedValueOnce(null);
+      repository.findById.mockResolvedValue(mockCategory);
+      repository.findByName.mockResolvedValue(null);
       repository.save.mockResolvedValue({
         ...mockCategory,
         name: 'Updated Name',
@@ -137,9 +132,8 @@ describe('CategoriesService', () => {
 
     it('should throw ConflictException when name conflicts with another category', async () => {
       const otherCategory = { ...mockCategory, id: 'other-uuid' };
-      repository.findOne
-        .mockResolvedValueOnce(mockCategory)
-        .mockResolvedValueOnce(otherCategory);
+      repository.findById.mockResolvedValue(mockCategory);
+      repository.findByName.mockResolvedValue(otherCategory);
 
       await expect(
         service.update('category-uuid', { name: 'Existing Name' }),
@@ -149,8 +143,8 @@ describe('CategoriesService', () => {
 
   describe('delete', () => {
     it('should delete a category', async () => {
-      repository.findOne.mockResolvedValue(mockCategory);
-      repository.remove.mockResolvedValue(mockCategory);
+      repository.findById.mockResolvedValue(mockCategory);
+      repository.remove.mockResolvedValue(undefined);
 
       await service.delete('category-uuid');
 
@@ -158,7 +152,7 @@ describe('CategoriesService', () => {
     });
 
     it('should throw NotFoundException when category not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      repository.findById.mockResolvedValue(null);
 
       await expect(service.delete('unknown-uuid')).rejects.toThrow(
         NotFoundException,
