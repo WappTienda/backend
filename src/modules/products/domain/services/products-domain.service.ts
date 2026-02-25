@@ -17,7 +17,7 @@ import {
   ProductQueryDto,
 } from '../../application/dto';
 import { PaginatedResponseDto } from '../../../../common/dto';
-import { CategoriesService } from '../../../categories';
+import { CategoriesService } from '../../../categories/domain/services/categories-domain.service';
 
 @Injectable()
 export class ProductsService implements ProductsUseCasePort {

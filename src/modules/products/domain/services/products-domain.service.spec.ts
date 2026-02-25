@@ -15,7 +15,7 @@ import {
   PRODUCT_REPOSITORY,
   ProductRepositoryPort,
 } from '../ports/out/product-repository.port';
-import { CategoriesService } from '../../../categories';
+import { CategoriesService } from '../../../categories/domain/services/categories-domain.service';
 
 describe('ProductsService', () => {
   let service: ProductsService;

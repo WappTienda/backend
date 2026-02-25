@@ -10,8 +10,8 @@ import {
   ORDER_REPOSITORY,
   OrderRepositoryPort,
 } from '../ports/out/order-repository.port';
-import { CustomersService } from '../../../customers';
-import { ProductsService } from '../../../products';
+import { CustomersService } from '../../../customers/domain/services/customers-domain.service';
+import { ProductsService } from '../../../products/domain/services/products-domain.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
