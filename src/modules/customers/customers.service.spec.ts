@@ -1,16 +1,18 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
-import { CustomersService } from './customers.service';
-import { Customer } from './entities/customer.entity';
+import { CustomersService } from './domain/services/customers-domain.service';
+import { CustomerModel } from './domain/models/customer.model';
+import {
+  CUSTOMER_REPOSITORY,
+  CustomerRepositoryPort,
+} from './domain/ports/out/customer-repository.port';
 
 describe('CustomersService', () => {
   let service: CustomersService;
-  let repository: jest.Mocked<Repository<Customer>>;
+  let customerRepository: jest.Mocked<CustomerRepositoryPort>;
 
-  const mockCustomer: Customer = {
+  const mockCustomer: CustomerModel = Object.assign(new CustomerModel(), {
     id: 'customer-uuid',
     name: 'John Doe',
     phone: '+1234567890',
@@ -19,30 +21,36 @@ describe('CustomersService', () => {
     orders: [],
     createdAt: new Date(),
     updatedAt: new Date(),
+  });
+
+  const mockCustomerRepository: jest.Mocked<CustomerRepositoryPort> = {
+    findAll: jest.fn(),
+    findById: jest.fn(),
+    findByPhone: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
   };
 
   beforeEach(async () => {
-    const mockRepository = {
-      findOne: jest.fn(),
-      findAndCount: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-    };
+    jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
-        { provide: getRepositoryToken(Customer), useValue: mockRepository },
+        { provide: CUSTOMER_REPOSITORY, useValue: mockCustomerRepository },
       ],
     }).compile();
 
     service = module.get<CustomersService>(CustomersService);
-    repository = module.get(getRepositoryToken(Customer));
+    customerRepository = module.get(CUSTOMER_REPOSITORY);
   });
 
   describe('findAll', () => {
     it('should return paginated customers', async () => {
-      repository.findAndCount.mockResolvedValue([[mockCustomer], 1]);
+      customerRepository.findAll.mockResolvedValue({
+        data: [mockCustomer],
+        total: 1,
+      });
 
       const result = await service.findAll({ page: 1, limit: 10 });
 
@@ -52,33 +60,29 @@ describe('CustomersService', () => {
     });
 
     it('should use default pagination values', async () => {
-      repository.findAndCount.mockResolvedValue([[], 0]);
+      customerRepository.findAll.mockResolvedValue({ data: [], total: 0 });
 
       await service.findAll({});
 
-      expect(repository.findAndCount).toHaveBeenCalledWith({
-        order: { createdAt: 'DESC' },
-        skip: 0,
-        take: 10,
+      expect(customerRepository.findAll).toHaveBeenCalledWith({
+        page: 1,
+        limit: 10,
       });
     });
   });
 
   describe('findById', () => {
     it('should return a customer with orders', async () => {
-      repository.findOne.mockResolvedValue(mockCustomer);
+      customerRepository.findById.mockResolvedValue(mockCustomer);
 
       const result = await service.findById('customer-uuid');
 
       expect(result).toEqual(mockCustomer);
-      expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: 'customer-uuid' },
-        relations: ['orders'],
-      });
+      expect(customerRepository.findById).toHaveBeenCalledWith('customer-uuid');
     });
 
     it('should throw NotFoundException when customer not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      customerRepository.findById.mockResolvedValue(null);
 
       await expect(service.findById('unknown-uuid')).rejects.toThrow(
         NotFoundException,
@@ -88,7 +92,7 @@ describe('CustomersService', () => {
 
   describe('findByPhone', () => {
     it('should return a customer when found', async () => {
-      repository.findOne.mockResolvedValue(mockCustomer);
+      customerRepository.findByPhone.mockResolvedValue(mockCustomer);
 
       const result = await service.findByPhone('+1234567890');
 
@@ -96,7 +100,7 @@ describe('CustomersService', () => {
     });
 
     it('should return null when customer not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      customerRepository.findByPhone.mockResolvedValue(null);
 
       const result = await service.findByPhone('+0000000000');
 
@@ -106,8 +110,7 @@ describe('CustomersService', () => {
 
   describe('create', () => {
     it('should create a new customer', async () => {
-      repository.create.mockReturnValue(mockCustomer);
-      repository.save.mockResolvedValue(mockCustomer);
+      customerRepository.create.mockResolvedValue(mockCustomer);
 
       const result = await service.create({
         name: 'John Doe',
@@ -120,12 +123,12 @@ describe('CustomersService', () => {
 
   describe('findOrCreate', () => {
     it('should return existing customer and update details', async () => {
-      repository.findOne.mockResolvedValue(mockCustomer);
-      repository.save.mockResolvedValue({
+      customerRepository.findByPhone.mockResolvedValue(mockCustomer);
+      customerRepository.save.mockResolvedValue({
         ...mockCustomer,
         name: 'Jane Doe',
         address: 'New Address',
-      });
+      } as CustomerModel);
 
       const result = await service.findOrCreate({
         name: 'Jane Doe',
@@ -134,13 +137,12 @@ describe('CustomersService', () => {
       });
 
       expect(result.name).toBe('Jane Doe');
-      expect(repository.save).toHaveBeenCalled();
+      expect(customerRepository.save).toHaveBeenCalled();
     });
 
     it('should create new customer when not found', async () => {
-      repository.findOne.mockResolvedValue(null);
-      repository.create.mockReturnValue(mockCustomer);
-      repository.save.mockResolvedValue(mockCustomer);
+      customerRepository.findByPhone.mockResolvedValue(null);
+      customerRepository.create.mockResolvedValue(mockCustomer);
 
       const result = await service.findOrCreate({
         name: 'New Customer',
@@ -148,14 +150,17 @@ describe('CustomersService', () => {
       });
 
       expect(result).toEqual(mockCustomer);
-      expect(repository.create).toHaveBeenCalled();
+      expect(customerRepository.create).toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
     it('should update a customer', async () => {
-      repository.findOne.mockResolvedValue(mockCustomer);
-      repository.save.mockResolvedValue({ ...mockCustomer, name: 'Updated' });
+      customerRepository.findById.mockResolvedValue(mockCustomer);
+      customerRepository.save.mockResolvedValue({
+        ...mockCustomer,
+        name: 'Updated',
+      } as CustomerModel);
 
       const result = await service.update('customer-uuid', { name: 'Updated' });
 
@@ -163,7 +168,7 @@ describe('CustomersService', () => {
     });
 
     it('should throw NotFoundException when customer not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      customerRepository.findById.mockResolvedValue(null);
 
       await expect(
         service.update('unknown-uuid', { name: 'Test' }),
