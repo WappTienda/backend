@@ -8,7 +8,7 @@ import { OrdersService } from './orders.service';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CustomersService } from '../customers/customers.service';
-import { ProductsService } from '../products/products.service';
+import { ProductsService } from '../products/domain/services/products-domain.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;

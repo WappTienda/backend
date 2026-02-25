@@ -9,7 +9,7 @@ import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreatePublicOrderDto, UpdateOrderDto, OrderQueryDto } from './dto';
 import { CustomersService } from '../customers/customers.service';
-import { ProductsService } from '../products/products.service';
+import { ProductsService } from '../products/domain/services/products-domain.service';
 import { PaginatedResponseDto } from '../../common/dto';
 
 @Injectable()

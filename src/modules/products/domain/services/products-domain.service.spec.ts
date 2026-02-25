@@ -9,13 +9,13 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { ProductsService } from './domain/services/products-domain.service';
-import { ProductModel } from './domain/models/product.model';
+import { ProductsService } from './products-domain.service';
+import { ProductModel } from '../models/product.model';
 import {
   PRODUCT_REPOSITORY,
   ProductRepositoryPort,
-} from './domain/ports/out/product-repository.port';
-import { CategoriesService } from '../categories/categories.service';
+} from '../ports/out/product-repository.port';
+import { CategoriesService } from '../../../categories/categories.service';
 
 describe('ProductsService', () => {
   let service: ProductsService;

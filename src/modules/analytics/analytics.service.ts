@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
-import { Product } from '../products/entities/product.entity';
+import { Product } from '../products/infrastructure/entities/product.entity';
 import { Customer } from '../customers/entities/customer.entity';
 
 export interface DashboardStats {
