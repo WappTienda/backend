@@ -18,7 +18,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { OrdersService } from '../../../domain/services/orders-domain.service';
-import { SettingsService } from '../../../../settings/settings.service';
+import { SettingsService } from '../../../../settings';
 import {
   CreatePublicOrderDto,
   UpdateOrderDto,

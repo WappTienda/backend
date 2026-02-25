@@ -10,7 +10,7 @@ import {
   BeforeInsert,
 } from 'typeorm';
 import { nanoid } from 'nanoid';
-import { Customer } from '../../../customers/entities/customer.entity';
+import { Customer } from '../../../customers';
 import { OrderItem } from './order-item.entity';
 
 export { OrderStatus } from '../../domain/models/order.model';

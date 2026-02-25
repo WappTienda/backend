@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { SettingsService } from './domain/services/settings-domain.service';
-import { SettingModel } from './domain/models/setting.model';
+import { SettingsService } from './settings-domain.service';
+import { SettingModel } from '../models/setting.model';
 import {
   SETTING_REPOSITORY,
   SettingRepositoryPort,
-} from './domain/ports/out/setting-repository.port';
+} from '../ports/out/setting-repository.port';
 
 describe('SettingsService', () => {
   let service: SettingsService;

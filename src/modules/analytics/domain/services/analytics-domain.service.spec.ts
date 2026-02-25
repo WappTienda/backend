@@ -1,16 +1,16 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { AnalyticsService } from './domain/services/analytics-domain.service';
+import { AnalyticsService } from './analytics-domain.service';
 import {
   DashboardStats,
   OrderStats,
   TopProduct,
-} from './domain/models/analytics.model';
+} from '../models/analytics.model';
 import {
   ANALYTICS_REPOSITORY,
   AnalyticsRepositoryPort,
-} from './domain/ports/out/analytics-repository.port';
-import { OrderStatus } from '../orders/domain/models/order.model';
+} from '../ports/out/analytics-repository.port';
+import { OrderStatus } from '../../../orders/domain/models/order.model';
 
 describe('AnalyticsService', () => {
   let service: AnalyticsService;

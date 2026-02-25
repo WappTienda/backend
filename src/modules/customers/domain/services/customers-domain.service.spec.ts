@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
-import { CustomersService } from './domain/services/customers-domain.service';
-import { CustomerModel } from './domain/models/customer.model';
+import { CustomersService } from './customers-domain.service';
+import { CustomerModel } from '../models/customer.model';
 import {
   CUSTOMER_REPOSITORY,
   CustomerRepositoryPort,
-} from './domain/ports/out/customer-repository.port';
+} from '../ports/out/customer-repository.port';
 
 describe('CustomersService', () => {
   let service: CustomersService;

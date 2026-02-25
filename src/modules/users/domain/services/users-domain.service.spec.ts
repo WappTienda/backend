@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { UsersService } from './domain/services/users-domain.service';
-import { UserModel, UserRole } from './domain/models/user.model';
+import { UsersService } from './users-domain.service';
+import { UserModel, UserRole } from '../models/user.model';
 import {
   USER_REPOSITORY,
   UserRepositoryPort,
-} from './domain/ports/out/user-repository.port';
+} from '../ports/out/user-repository.port';
 
 describe('UsersService', () => {
   let service: UsersService;

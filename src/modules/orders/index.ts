@@ -8,5 +8,3 @@ export * from './infrastructure/entities/order-item.entity';
 export * from './infrastructure/mappers/order.mapper';
 export * from './infrastructure/adapters/out/typeorm-order.repository';
 export * from './application/dto';
-export * from './entities';
-export * from './dto';

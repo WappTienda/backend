@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
-import { CategoriesService } from './domain/services/categories-domain.service';
+import { CategoriesService } from './categories-domain.service';
 import {
   CATEGORY_REPOSITORY,
   CategoryRepositoryPort,
-} from './domain/ports/out/category-repository.port';
-import { CategoryModel } from './domain/models/category.model';
+} from '../ports/out/category-repository.port';
+import { CategoryModel } from '../models/category.model';
 
 describe('CategoriesService', () => {
   let service: CategoriesService;

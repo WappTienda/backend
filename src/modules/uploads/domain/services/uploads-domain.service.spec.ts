@@ -2,8 +2,8 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
-import { UploadsService } from './domain/services/uploads-domain.service';
-import { STORAGE_PORT, StoragePort } from './domain/ports/out/storage.port';
+import { UploadsService } from './uploads-domain.service';
+import { STORAGE_PORT, StoragePort } from '../ports/out/storage.port';
 
 describe('UploadsService', () => {
   let service: UploadsService;

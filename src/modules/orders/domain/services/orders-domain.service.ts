@@ -16,8 +16,8 @@ import {
   OrderQueryDto,
 } from '../../application/dto';
 import { PaginatedResponseDto } from '../../../../common/dto';
-import { CustomersService } from '../../../customers/customers.service';
-import { ProductsService } from '../../../products/domain/services/products-domain.service';
+import { CustomersService } from '../../../customers';
+import { ProductsService } from '../../../products';
 
 @Injectable()
 export class OrdersService implements OrdersUseCasePort {

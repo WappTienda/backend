@@ -4,14 +4,14 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { OrdersService } from './domain/services/orders-domain.service';
-import { OrderModel, OrderStatus } from './domain/models/order.model';
+import { OrdersService } from './orders-domain.service';
+import { OrderModel, OrderStatus } from '../models/order.model';
 import {
   ORDER_REPOSITORY,
   OrderRepositoryPort,
-} from './domain/ports/out/order-repository.port';
-import { CustomersService } from '../customers/customers.service';
-import { ProductsService } from '../products/domain/services/products-domain.service';
+} from '../ports/out/order-repository.port';
+import { CustomersService } from '../../../customers';
+import { ProductsService } from '../../../products';
 
 describe('OrdersService', () => {
   let service: OrdersService;
