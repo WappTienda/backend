@@ -1,0 +1,105 @@
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Order } from '../../entities/order.entity';
+import { OrderItem } from '../../entities/order-item.entity';
+import { OrderMapper } from '../../mappers/order.mapper';
+import { OrderModel } from '../../../domain/models/order.model';
+import {
+  OrderRepositoryPort,
+  FindOrdersQuery,
+  PaginatedOrders,
+} from '../../../domain/ports/out/order-repository.port';
+
+@Injectable()
+export class TypeOrmOrderRepository implements OrderRepositoryPort {
+  constructor(
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
+    @InjectRepository(OrderItem)
+    private readonly orderItemRepository: Repository<OrderItem>,
+  ) {}
+
+  async findAll(query: FindOrdersQuery): Promise<PaginatedOrders> {
+    const { page = 1, limit = 10, status, search } = query;
+
+    const qb = this.orderRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.customer', 'customer')
+      .leftJoinAndSelect('order.items', 'items');
+
+    if (status) {
+      qb.andWhere('order.status = :status', { status });
+    }
+
+    if (search) {
+      qb.andWhere(
+        '(order.publicId ILIKE :search OR customer.name ILIKE :search OR customer.phone ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    qb.orderBy('order.createdAt', 'DESC');
+    qb.skip((page - 1) * limit).take(limit);
+
+    const [entities, total] = await qb.getManyAndCount();
+
+    return {
+      data: entities.map((entity) => OrderMapper.toDomain(entity)),
+      total,
+    };
+  }
+
+  async findById(id: string): Promise<OrderModel | null> {
+    const entity = await this.orderRepository.findOne({
+      where: { id },
+      relations: ['customer', 'items', 'items.product'],
+    });
+
+    return entity ? OrderMapper.toDomain(entity) : null;
+  }
+
+  async findByPublicId(publicId: string): Promise<OrderModel | null> {
+    const entity = await this.orderRepository.findOne({
+      where: { publicId },
+      relations: ['customer', 'items'],
+    });
+
+    return entity ? OrderMapper.toDomain(entity) : null;
+  }
+
+  async create(data: {
+    customerId: string;
+    customerNote?: string;
+    status: string;
+    totalAmount: number;
+    items: Partial<OrderItem>[];
+  }): Promise<OrderModel> {
+    const entity = this.orderRepository.create({
+      customerId: data.customerId,
+      customerNote: data.customerNote,
+      status: data.status as any,
+      totalAmount: data.totalAmount,
+      items: data.items as OrderItem[],
+    });
+
+    const saved = await this.orderRepository.save(entity);
+    return OrderMapper.toDomain(saved);
+  }
+
+  async save(order: OrderModel): Promise<OrderModel> {
+    const entityData = OrderMapper.toEntity(order);
+    const entity = this.orderRepository.create(entityData);
+    const saved = await this.orderRepository.save(entity);
+    return OrderMapper.toDomain(saved);
+  }
+
+  async remove(order: OrderModel): Promise<void> {
+    const entity = await this.orderRepository.findOne({
+      where: { id: order.id },
+    });
+    if (entity) {
+      await this.orderRepository.remove(entity);
+    }
+  }
+}

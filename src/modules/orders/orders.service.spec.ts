@@ -2,17 +2,19 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { OrdersService } from './orders.service';
-import { Order, OrderStatus } from './entities/order.entity';
-import { OrderItem } from './entities/order-item.entity';
+import { OrdersService } from './domain/services/orders-domain.service';
+import { OrderModel, OrderStatus } from './domain/models/order.model';
+import {
+  ORDER_REPOSITORY,
+  OrderRepositoryPort,
+} from './domain/ports/out/order-repository.port';
 import { CustomersService } from '../customers/customers.service';
 import { ProductsService } from '../products/domain/services/products-domain.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
-  let orderRepository: any;
+  let orderRepository: jest.Mocked<OrderRepositoryPort>;
   let customersService: any;
   let productsService: any;
 
@@ -32,7 +34,7 @@ describe('OrdersService', () => {
     isInStock: true,
   };
 
-  const mockOrder: Order = {
+  const mockOrder: OrderModel = Object.assign(new OrderModel(), {
     id: 'order-uuid',
     publicId: 'ABC123',
     customerId: 'customer-uuid',
@@ -44,33 +46,19 @@ describe('OrdersService', () => {
     items: [],
     createdAt: new Date(),
     updatedAt: new Date(),
-    generatePublicId: jest.fn(),
-    calculateTotal: jest.fn().mockReturnValue(80),
-  };
+  });
 
-  const mockQueryBuilder = {
-    leftJoinAndSelect: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    skip: jest.fn().mockReturnThis(),
-    take: jest.fn().mockReturnThis(),
-    getManyAndCount: jest.fn(),
+  const mockOrderRepository: jest.Mocked<OrderRepositoryPort> = {
+    findAll: jest.fn(),
+    findById: jest.fn(),
+    findByPublicId: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    remove: jest.fn(),
   };
 
   beforeEach(async () => {
-    const mockOrderRepository = {
-      createQueryBuilder: jest.fn(() => mockQueryBuilder),
-      findOne: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-      remove: jest.fn(),
-    };
-
-    const mockOrderItemRepository = {
-      create: jest.fn(),
-      save: jest.fn(),
-    };
+    jest.clearAllMocks();
 
     const mockCustomersService = {
       findOrCreate: jest.fn(),
@@ -83,18 +71,14 @@ describe('OrdersService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
-        { provide: getRepositoryToken(Order), useValue: mockOrderRepository },
-        {
-          provide: getRepositoryToken(OrderItem),
-          useValue: mockOrderItemRepository,
-        },
+        { provide: ORDER_REPOSITORY, useValue: mockOrderRepository },
         { provide: CustomersService, useValue: mockCustomersService },
         { provide: ProductsService, useValue: mockProductsService },
       ],
     }).compile();
 
     service = module.get<OrdersService>(OrdersService);
-    orderRepository = module.get(getRepositoryToken(Order));
+    orderRepository = module.get(ORDER_REPOSITORY);
     customersService = module.get(CustomersService);
     productsService = module.get(ProductsService);
   });
@@ -105,7 +89,10 @@ describe('OrdersService', () => {
 
   describe('findAll', () => {
     it('should return paginated orders', async () => {
-      mockQueryBuilder.getManyAndCount.mockResolvedValue([[mockOrder], 1]);
+      mockOrderRepository.findAll.mockResolvedValue({
+        data: [mockOrder],
+        total: 1,
+      });
 
       const result = await service.findAll({ page: 1, limit: 10 });
 
@@ -114,7 +101,7 @@ describe('OrdersService', () => {
     });
 
     it('should filter by status', async () => {
-      mockQueryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      mockOrderRepository.findAll.mockResolvedValue({ data: [], total: 0 });
 
       await service.findAll({
         page: 1,
@@ -122,39 +109,38 @@ describe('OrdersService', () => {
         status: OrderStatus.PENDING,
       });
 
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'order.status = :status',
-        { status: OrderStatus.PENDING },
-      );
+      expect(mockOrderRepository.findAll).toHaveBeenCalledWith({
+        page: 1,
+        limit: 10,
+        status: OrderStatus.PENDING,
+      });
     });
 
     it('should filter by search term', async () => {
-      mockQueryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      mockOrderRepository.findAll.mockResolvedValue({ data: [], total: 0 });
 
       await service.findAll({ page: 1, limit: 10, search: 'John' });
 
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        '(order.publicId ILIKE :search OR customer.name ILIKE :search OR customer.phone ILIKE :search)',
-        { search: '%John%' },
-      );
+      expect(mockOrderRepository.findAll).toHaveBeenCalledWith({
+        page: 1,
+        limit: 10,
+        search: 'John',
+      });
     });
   });
 
   describe('findById', () => {
     it('should return an order with relations', async () => {
-      orderRepository.findOne.mockResolvedValue(mockOrder);
+      orderRepository.findById.mockResolvedValue(mockOrder);
 
       const result = await service.findById('order-uuid');
 
       expect(result).toEqual(mockOrder);
-      expect(orderRepository.findOne).toHaveBeenCalledWith({
-        where: { id: 'order-uuid' },
-        relations: ['customer', 'items', 'items.product'],
-      });
+      expect(orderRepository.findById).toHaveBeenCalledWith('order-uuid');
     });
 
     it('should throw NotFoundException when order not found', async () => {
-      orderRepository.findOne.mockResolvedValue(null);
+      orderRepository.findById.mockResolvedValue(null);
 
       await expect(service.findById('unknown-uuid')).rejects.toThrow(
         NotFoundException,
@@ -164,7 +150,7 @@ describe('OrdersService', () => {
 
   describe('findByPublicId', () => {
     it('should return an order by public ID', async () => {
-      orderRepository.findOne.mockResolvedValue(mockOrder);
+      orderRepository.findByPublicId.mockResolvedValue(mockOrder);
 
       const result = await service.findByPublicId('ABC123');
 
@@ -172,7 +158,7 @@ describe('OrdersService', () => {
     });
 
     it('should throw NotFoundException when order not found', async () => {
-      orderRepository.findOne.mockResolvedValue(null);
+      orderRepository.findByPublicId.mockResolvedValue(null);
 
       await expect(service.findByPublicId('UNKNOWN')).rejects.toThrow(
         NotFoundException,
@@ -184,9 +170,8 @@ describe('OrdersService', () => {
     it('should create a new order', async () => {
       customersService.findOrCreate.mockResolvedValue(mockCustomer as any);
       productsService.findByIdPublic.mockResolvedValue(mockProduct as any);
-      orderRepository.create.mockReturnValue(mockOrder);
-      orderRepository.save.mockResolvedValue(mockOrder);
-      orderRepository.findOne.mockResolvedValue(mockOrder);
+      orderRepository.create.mockResolvedValue(mockOrder);
+      orderRepository.findById.mockResolvedValue(mockOrder);
 
       const result = await service.createPublicOrder({
         customerName: 'John Doe',
@@ -218,11 +203,11 @@ describe('OrdersService', () => {
 
   describe('update', () => {
     it('should update order status', async () => {
-      orderRepository.findOne.mockResolvedValue(mockOrder);
+      orderRepository.findById.mockResolvedValue(mockOrder);
       orderRepository.save.mockResolvedValue({
         ...mockOrder,
         status: OrderStatus.CONFIRMED,
-      });
+      } as OrderModel);
 
       const result = await service.update('order-uuid', {
         status: OrderStatus.CONFIRMED,
@@ -234,8 +219,8 @@ describe('OrdersService', () => {
 
   describe('delete', () => {
     it('should delete an order', async () => {
-      orderRepository.findOne.mockResolvedValue(mockOrder);
-      orderRepository.remove.mockResolvedValue(mockOrder);
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.remove.mockResolvedValue(undefined);
 
       await service.delete('order-uuid');
 
@@ -245,7 +230,7 @@ describe('OrdersService', () => {
 
   describe('generateWhatsAppMessage', () => {
     it('should generate a WhatsApp message URL', () => {
-      const orderWithItems = {
+      const orderWithItems = Object.assign(new OrderModel(), {
         ...mockOrder,
         items: [
           {
@@ -254,7 +239,7 @@ describe('OrdersService', () => {
             subtotal: 160,
           },
         ],
-      } as Order;
+      });
 
       const result = service.generateWhatsAppMessage(
         orderWithItems,
@@ -268,7 +253,7 @@ describe('OrdersService', () => {
 
   describe('getOrderSummary', () => {
     it('should return order summary object', () => {
-      const orderWithItems = {
+      const orderWithItems = Object.assign(new OrderModel(), {
         ...mockOrder,
         status: OrderStatus.PENDING,
         items: [
@@ -280,7 +265,7 @@ describe('OrdersService', () => {
             subtotal: 160,
           },
         ],
-      } as Order;
+      });
 
       const result = service.getOrderSummary(orderWithItems);
 
