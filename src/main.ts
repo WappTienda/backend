@@ -10,6 +10,7 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   // Security headers
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   app.use(helmet());
 
   // Global prefix
