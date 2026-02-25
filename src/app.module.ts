@@ -6,7 +6,7 @@ import { configuration } from './config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HttpLoggerMiddleware } from './common/middlewares';
-import { JwtAuthGuard } from './modules/auth/guards';
+import { JwtAuthGuard } from './modules/auth/infrastructure/guards/jwt-auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CategoriesModule } from './modules/categories/categories.module';
