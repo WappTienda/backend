@@ -1,8 +1,5 @@
 import { CategoryModel } from '../../models/category.model';
-import {
-  CreateCategoryDto,
-  UpdateCategoryDto,
-} from '../../../application/dto';
+import { CreateCategoryDto, UpdateCategoryDto } from '../../../application/dto';
 
 export const CATEGORIES_USE_CASE = Symbol('CATEGORIES_USE_CASE');
 

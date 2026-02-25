@@ -16,7 +16,10 @@ import {
 import { CustomersService } from '../../../domain/services/customers-domain.service';
 import { UpdateCustomerDto } from '../../../application/dto';
 import { CustomerModel } from '../../../domain/models/customer.model';
-import { PaginationQueryDto, PaginatedResponseDto } from '../../../../../common/dto';
+import {
+  PaginationQueryDto,
+  PaginatedResponseDto,
+} from '../../../../../common/dto';
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -37,7 +40,9 @@ export class CustomersController {
   @ApiOperation({ summary: 'Get customer by ID with orders (admin)' })
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<CustomerModel> {
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CustomerModel> {
     return this.customersService.findById(id);
   }
 

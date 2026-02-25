@@ -1,9 +1,9 @@
 import { CustomerModel } from '../../models/customer.model';
-import { PaginatedResponseDto, PaginationQueryDto } from '../../../../../common/dto';
 import {
-  CreateCustomerDto,
-  UpdateCustomerDto,
-} from '../../../application/dto';
+  PaginatedResponseDto,
+  PaginationQueryDto,
+} from '../../../../../common/dto';
+import { CreateCustomerDto, UpdateCustomerDto } from '../../../application/dto';
 
 export const CUSTOMER_USE_CASE = Symbol('CUSTOMER_USE_CASE');
 

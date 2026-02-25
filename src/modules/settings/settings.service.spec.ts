@@ -153,9 +153,7 @@ describe('SettingsService', () => {
   describe('updateMany', () => {
     it('should update multiple settings', async () => {
       repository.findByKey.mockResolvedValue(mockSetting);
-      repository.save.mockImplementation((setting) =>
-        Promise.resolve(setting),
-      );
+      repository.save.mockImplementation((setting) => Promise.resolve(setting));
 
       const result = await service.updateMany([
         { key: 'businessName', value: 'Tienda 1' },

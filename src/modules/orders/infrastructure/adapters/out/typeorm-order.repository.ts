@@ -78,6 +78,7 @@ export class TypeOrmOrderRepository implements OrderRepositoryPort {
     const entity = this.orderRepository.create({
       customerId: data.customerId,
       customerNote: data.customerNote,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       status: data.status as any,
       totalAmount: data.totalAmount,
       items: data.items as OrderItem[],

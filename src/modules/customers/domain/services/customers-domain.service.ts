@@ -6,7 +6,10 @@ import {
 } from '../ports/out/customer-repository.port';
 import { CustomerUseCasePort } from '../ports/in/customer-use-case.port';
 import { CreateCustomerDto, UpdateCustomerDto } from '../../application/dto';
-import { PaginationQueryDto, PaginatedResponseDto } from '../../../../common/dto';
+import {
+  PaginationQueryDto,
+  PaginatedResponseDto,
+} from '../../../../common/dto';
 
 @Injectable()
 export class CustomersService implements CustomerUseCasePort {
@@ -19,7 +22,10 @@ export class CustomersService implements CustomerUseCasePort {
     query: PaginationQueryDto,
   ): Promise<PaginatedResponseDto<CustomerModel>> {
     const { page = 1, limit = 10 } = query;
-    const { data, total } = await this.customerRepository.findAll({ page, limit });
+    const { data, total } = await this.customerRepository.findAll({
+      page,
+      limit,
+    });
     return new PaginatedResponseDto(data, total, page, limit);
   }
 
