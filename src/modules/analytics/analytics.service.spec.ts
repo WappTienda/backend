@@ -3,68 +3,37 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { AnalyticsService, DashboardStats } from './analytics.service';
-import { Order, OrderStatus } from '../orders/entities/order.entity';
-import { Product } from '../products/infrastructure/entities/product.entity';
-import { Customer } from '../customers/entities/customer.entity';
+import { AnalyticsService } from './domain/services/analytics-domain.service';
+import { DashboardStats, OrderStats, TopProduct } from './domain/models/analytics.model';
+import {
+  ANALYTICS_REPOSITORY,
+  AnalyticsRepositoryPort,
+} from './domain/ports/out/analytics-repository.port';
+import { OrderStatus } from '../orders/domain/models/order.model';
 
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
-  let orderRepository: any;
-  let productRepository: jest.Mocked<Repository<Product>>;
-  let customerRepository: jest.Mocked<Repository<Customer>>;
-
-  const mockQueryBuilder = {
-    select: jest.fn().mockReturnThis(),
-    addSelect: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    groupBy: jest.fn().mockReturnThis(),
-    addGroupBy: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-    innerJoin: jest.fn().mockReturnThis(),
-    getRawMany: jest.fn(),
-    getRawOne: jest.fn(),
-    getCount: jest.fn(),
-  };
+  let analyticsRepository: jest.Mocked<AnalyticsRepositoryPort>;
 
   beforeEach(async () => {
-    const mockOrderRepository = {
-      count: jest.fn(),
-      createQueryBuilder: jest.fn(() => mockQueryBuilder),
-    };
-
-    const mockProductRepository = {
-      count: jest.fn(),
-      createQueryBuilder: jest.fn(() => mockQueryBuilder),
-    };
-
-    const mockCustomerRepository = {
-      count: jest.fn(),
+    const mockAnalyticsRepository: jest.Mocked<AnalyticsRepositoryPort> = {
+      getDashboardStats: jest.fn(),
+      getOrderStats: jest.fn(),
+      getTopProducts: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AnalyticsService,
-        { provide: getRepositoryToken(Order), useValue: mockOrderRepository },
         {
-          provide: getRepositoryToken(Product),
-          useValue: mockProductRepository,
-        },
-        {
-          provide: getRepositoryToken(Customer),
-          useValue: mockCustomerRepository,
+          provide: ANALYTICS_REPOSITORY,
+          useValue: mockAnalyticsRepository,
         },
       ],
     }).compile();
 
     service = module.get<AnalyticsService>(AnalyticsService);
-    orderRepository = module.get(getRepositoryToken(Order));
-    productRepository = module.get(getRepositoryToken(Product));
-    customerRepository = module.get(getRepositoryToken(Customer));
+    analyticsRepository = module.get(ANALYTICS_REPOSITORY);
   });
 
   afterEach(() => {
@@ -73,18 +42,30 @@ describe('AnalyticsService', () => {
 
   describe('getDashboard', () => {
     it('should return dashboard statistics', async () => {
-      orderRepository.count.mockResolvedValue(100);
-      mockQueryBuilder.getRawMany.mockResolvedValue([
-        { status: OrderStatus.PENDING, count: '30' },
-        { status: OrderStatus.CONFIRMED, count: '40' },
-        { status: OrderStatus.DELIVERED, count: '20' },
-        { status: OrderStatus.CANCELLED, count: '10' },
-      ]);
-      mockQueryBuilder.getRawOne.mockResolvedValue({ total: '5000.00' });
-      productRepository.count.mockResolvedValueOnce(50);
-      productRepository.count.mockResolvedValueOnce(45);
-      mockQueryBuilder.getCount.mockResolvedValue(5);
-      customerRepository.count.mockResolvedValue(200);
+      const dashboardStats: DashboardStats = {
+        orders: {
+          total: 100,
+          pending: 30,
+          confirmed: 40,
+          delivered: 20,
+          cancelled: 10,
+        },
+        revenue: {
+          total: 5000,
+          today: 500,
+          thisWeek: 2000,
+          thisMonth: 4000,
+        },
+        products: {
+          total: 50,
+          visible: 45,
+          outOfStock: 5,
+        },
+        customers: {
+          total: 200,
+        },
+      };
+      analyticsRepository.getDashboardStats.mockResolvedValue(dashboardStats);
 
       const result = await service.getDashboard();
 
@@ -96,12 +77,30 @@ describe('AnalyticsService', () => {
     });
 
     it('should handle empty data gracefully', async () => {
-      orderRepository.count.mockResolvedValue(0);
-      mockQueryBuilder.getRawMany.mockResolvedValue([]);
-      mockQueryBuilder.getRawOne.mockResolvedValue({ total: null });
-      productRepository.count.mockResolvedValue(0);
-      mockQueryBuilder.getCount.mockResolvedValue(0);
-      customerRepository.count.mockResolvedValue(0);
+      const emptyStats: DashboardStats = {
+        orders: {
+          total: 0,
+          pending: 0,
+          confirmed: 0,
+          delivered: 0,
+          cancelled: 0,
+        },
+        revenue: {
+          total: 0,
+          today: 0,
+          thisWeek: 0,
+          thisMonth: 0,
+        },
+        products: {
+          total: 0,
+          visible: 0,
+          outOfStock: 0,
+        },
+        customers: {
+          total: 0,
+        },
+      };
+      analyticsRepository.getDashboardStats.mockResolvedValue(emptyStats);
 
       const result = await service.getDashboard();
 
@@ -114,14 +113,17 @@ describe('AnalyticsService', () => {
 
   describe('getOrderStats', () => {
     it('should return order statistics for the given period', async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { status: OrderStatus.PENDING, count: '10' },
-        { status: OrderStatus.CONFIRMED, count: '20' },
-      ]);
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { date: '2024-01-01', count: '5', total: '500.00' },
-        { date: '2024-01-02', count: '8', total: '800.00' },
-      ]);
+      const orderStats: OrderStats = {
+        byStatus: {
+          [OrderStatus.PENDING]: 10,
+          [OrderStatus.CONFIRMED]: 20,
+        },
+        byDate: [
+          { date: '2024-01-01', count: 5, total: 500 },
+          { date: '2024-01-02', count: 8, total: 800 },
+        ],
+      };
+      analyticsRepository.getOrderStats.mockResolvedValue(orderStats);
 
       const result = await service.getOrderStats(30);
 
@@ -132,35 +134,36 @@ describe('AnalyticsService', () => {
     });
 
     it('should use default 30 days period', async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValue([]);
+      analyticsRepository.getOrderStats.mockResolvedValue({
+        byStatus: {},
+        byDate: [],
+      });
 
       await service.getOrderStats();
 
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
-        'order.createdAt >= :startDate',
-        expect.any(Object),
-      );
+      expect(analyticsRepository.getOrderStats).toHaveBeenCalledWith(30);
     });
   });
 
   describe('getTopProducts', () => {
     it('should return top selling products', async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValue([
+      const topProducts: TopProduct[] = [
         {
           productId: 'prod-1',
           productName: 'Product 1',
           productSku: 'SKU-001',
-          totalQuantity: '100',
-          totalRevenue: '10000.00',
+          totalQuantity: 100,
+          totalRevenue: 10000,
         },
         {
           productId: 'prod-2',
           productName: 'Product 2',
           productSku: 'SKU-002',
-          totalQuantity: '80',
-          totalRevenue: '8000.00',
+          totalQuantity: 80,
+          totalRevenue: 8000,
         },
-      ]);
+      ];
+      analyticsRepository.getTopProducts.mockResolvedValue(topProducts);
 
       const result = await service.getTopProducts(10);
 
@@ -170,7 +173,7 @@ describe('AnalyticsService', () => {
     });
 
     it('should return empty array when no products sold', async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValue([]);
+      analyticsRepository.getTopProducts.mockResolvedValue([]);
 
       const result = await service.getTopProducts();
 
