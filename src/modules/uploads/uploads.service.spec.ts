@@ -1,27 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { BadRequestException } from '@nestjs/common';
-import { UploadsService } from './uploads.service';
-
-// Mock the AWS SDK
-jest.mock('@aws-sdk/client-s3', () => ({
-  S3Client: jest.fn().mockImplementation(() => ({
-    send: jest.fn(),
-  })),
-  PutObjectCommand: jest.fn(),
-  DeleteObjectCommand: jest.fn(),
-}));
-
-import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
+import { UploadsService } from './domain/services/uploads-domain.service';
+import { STORAGE_PORT, StoragePort } from './domain/ports/out/storage.port';
 
 describe('UploadsService', () => {
   let service: UploadsService;
-  let mockS3Send: jest.Mock;
+  let mockStoragePort: jest.Mocked<StoragePort>;
 
   const mockFile: Express.Multer.File = {
     fieldname: 'file',
@@ -37,30 +22,15 @@ describe('UploadsService', () => {
   };
 
   beforeEach(async () => {
-    mockS3Send = jest.fn();
-
-    const mockConfigService = {
-      get: jest.fn((key: string, defaultValue?: string) => {
-        const config: Record<string, string> = {
-          'aws.region': 'us-east-1',
-          'aws.s3Bucket': 'test-bucket',
-          'aws.s3Endpoint': '',
-          'aws.accessKeyId': 'test-key',
-          'aws.secretAccessKey': 'test-secret',
-        };
-        return config[key] || defaultValue;
-      }),
+    mockStoragePort = {
+      upload: jest.fn(),
+      delete: jest.fn(),
     };
-
-    // Reset the mock before each test
-    (S3Client as jest.Mock).mockImplementation(() => ({
-      send: mockS3Send,
-    }));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UploadsService,
-        { provide: ConfigService, useValue: mockConfigService },
+        { provide: STORAGE_PORT, useValue: mockStoragePort },
       ],
     }).compile();
 
@@ -73,7 +43,9 @@ describe('UploadsService', () => {
 
   describe('uploadImage', () => {
     it('should upload a valid image and return URL', async () => {
-      mockS3Send.mockResolvedValue({});
+      mockStoragePort.upload.mockResolvedValue(
+        'https://test-bucket.s3.us-east-1.amazonaws.com/products/abc123.jpg',
+      );
 
       const result = await service.uploadImage(mockFile, 'products');
 
@@ -81,7 +53,11 @@ describe('UploadsService', () => {
         'https://test-bucket.s3.us-east-1.amazonaws.com/products/',
       );
       expect(result).toContain('.jpg');
-      expect(PutObjectCommand).toHaveBeenCalled();
+      expect(mockStoragePort.upload).toHaveBeenCalledWith(
+        expect.stringMatching(/^products\/.*\.jpg$/),
+        mockFile.buffer,
+        mockFile.mimetype,
+      );
     });
 
     it('should throw BadRequestException for invalid mime type', async () => {
@@ -107,7 +83,16 @@ describe('UploadsService', () => {
     });
 
     it('should accept different valid image types', async () => {
-      mockS3Send.mockResolvedValue({});
+      mockStoragePort.upload
+        .mockResolvedValueOnce(
+          'https://test-bucket.s3.us-east-1.amazonaws.com/products/abc.png',
+        )
+        .mockResolvedValueOnce(
+          'https://test-bucket.s3.us-east-1.amazonaws.com/products/abc.webp',
+        )
+        .mockResolvedValueOnce(
+          'https://test-bucket.s3.us-east-1.amazonaws.com/products/abc.gif',
+        );
 
       const pngFile = {
         ...mockFile,
@@ -135,7 +120,7 @@ describe('UploadsService', () => {
     });
 
     it('should throw BadRequestException when S3 upload fails', async () => {
-      mockS3Send.mockRejectedValue(new Error('S3 Error'));
+      mockStoragePort.upload.mockRejectedValue(new Error('S3 Error'));
 
       await expect(service.uploadImage(mockFile)).rejects.toThrow(
         BadRequestException,
@@ -146,33 +131,52 @@ describe('UploadsService', () => {
     });
 
     it('should use default folder when not specified', async () => {
-      mockS3Send.mockResolvedValue({});
+      mockStoragePort.upload.mockResolvedValue(
+        'https://test-bucket.s3.us-east-1.amazonaws.com/products/abc.jpg',
+      );
 
       const result = await service.uploadImage(mockFile);
 
       expect(result).toContain('/products/');
     });
+
+    it('should throw BadRequestException when bucket is not configured', async () => {
+      mockStoragePort.upload.mockRejectedValue(
+        new BadRequestException('S3 bucket is not configured'),
+      );
+
+      await expect(service.uploadImage(mockFile)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.uploadImage(mockFile)).rejects.toThrow(
+        'S3 bucket is not configured',
+      );
+    });
   });
 
   describe('deleteImage', () => {
     it('should delete an image from S3', async () => {
-      mockS3Send.mockResolvedValue({});
+      mockStoragePort.delete.mockResolvedValue(undefined);
 
       await service.deleteImage(
         'https://test-bucket.s3.us-east-1.amazonaws.com/products/image123.jpg',
       );
 
-      expect(DeleteObjectCommand).toHaveBeenCalled();
+      expect(mockStoragePort.delete).toHaveBeenCalledWith(
+        'https://test-bucket.s3.us-east-1.amazonaws.com/products/image123.jpg',
+      );
     });
 
-    it('should not throw error when image URL does not contain bucket', async () => {
+    it('should not throw error when delete has issues', async () => {
+      mockStoragePort.delete.mockResolvedValue(undefined);
+
       await expect(
         service.deleteImage('https://other-bucket.s3.amazonaws.com/image.jpg'),
       ).resolves.not.toThrow();
     });
 
     it('should handle S3 delete errors gracefully', async () => {
-      mockS3Send.mockRejectedValue(new Error('Delete failed'));
+      mockStoragePort.delete.mockRejectedValue(new Error('Delete failed'));
 
       // Should not throw, just log the error
       await expect(
@@ -181,49 +185,5 @@ describe('UploadsService', () => {
         ),
       ).resolves.not.toThrow();
     });
-  });
-});
-
-describe('UploadsService - No Bucket Configured', () => {
-  it('should throw BadRequestException when bucket is not configured', async () => {
-    const mockConfigService = {
-      get: jest.fn((key: string, defaultValue?: string) => {
-        const config: Record<string, string> = {
-          'aws.region': 'us-east-1',
-          'aws.s3Bucket': '',
-          'aws.accessKeyId': 'test-key',
-          'aws.secretAccessKey': 'test-secret',
-        };
-        return config[key] || defaultValue;
-      }),
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        UploadsService,
-        { provide: ConfigService, useValue: mockConfigService },
-      ],
-    }).compile();
-
-    const service = module.get<UploadsService>(UploadsService);
-    const mockFile: Express.Multer.File = {
-      fieldname: 'file',
-      originalname: 'test.jpg',
-      encoding: '7bit',
-      mimetype: 'image/jpeg',
-      buffer: Buffer.from('test'),
-      size: 1024,
-      destination: '',
-      filename: '',
-      path: '',
-      stream: null as any,
-    };
-
-    await expect(service.uploadImage(mockFile)).rejects.toThrow(
-      BadRequestException,
-    );
-    await expect(service.uploadImage(mockFile)).rejects.toThrow(
-      'S3 bucket is not configured',
-    );
   });
 });
