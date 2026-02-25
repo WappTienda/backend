@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto';
 import { PaginationQueryDto, PaginatedResponseDto } from '../../common/dto';
@@ -48,15 +48,17 @@ export class CustomersService {
     return this.customerRepository.save(customer);
   }
 
-  async findOrCreate(dto: CreateCustomerDto): Promise<Customer> {
-    const existing = await this.findByPhone(dto.phone);
+  async findOrCreate(dto: CreateCustomerDto, manager?: EntityManager): Promise<Customer> {
+    const repo = manager ? manager.getRepository(Customer) : this.customerRepository;
+    const existing = await repo.findOne({ where: { phone: dto.phone } });
     if (existing) {
       // Update name/address if provided
       if (dto.name) existing.name = dto.name;
       if (dto.address) existing.address = dto.address;
-      return this.customerRepository.save(existing);
+      return repo.save(existing);
     }
-    return this.create(dto);
+    const customer = repo.create(dto);
+    return repo.save(customer);
   }
 
   async update(id: string, dto: UpdateCustomerDto): Promise<Customer> {

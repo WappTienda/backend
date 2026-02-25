@@ -4,6 +4,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { OrdersService } from './orders.service';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -15,6 +16,7 @@ describe('OrdersService', () => {
   let orderRepository: any;
   let customersService: any;
   let productsService: any;
+  let mockDataSource: any;
 
   const mockCustomer = {
     id: 'customer-uuid',
@@ -80,6 +82,15 @@ describe('OrdersService', () => {
       findByIdPublic: jest.fn(),
     };
 
+    mockDataSource = {
+      transaction: jest.fn().mockImplementation(async (cb: any) => {
+        const mockManager = {
+          getRepository: jest.fn().mockReturnValue(mockOrderRepository),
+        };
+        return cb(mockManager);
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
@@ -90,6 +101,7 @@ describe('OrdersService', () => {
         },
         { provide: CustomersService, useValue: mockCustomersService },
         { provide: ProductsService, useValue: mockProductsService },
+        { provide: DataSource, useValue: mockDataSource },
       ],
     }).compile();
 
@@ -181,7 +193,7 @@ describe('OrdersService', () => {
   });
 
   describe('createPublicOrder', () => {
-    it('should create a new order', async () => {
+    it('should create a new order within a transaction', async () => {
       customersService.findOrCreate.mockResolvedValue(mockCustomer as any);
       productsService.findByIdPublic.mockResolvedValue(mockProduct as any);
       orderRepository.create.mockReturnValue(mockOrder);
@@ -195,6 +207,7 @@ describe('OrdersService', () => {
       });
 
       expect(result).toEqual(mockOrder);
+      expect(mockDataSource.transaction).toHaveBeenCalled();
       expect(customersService.findOrCreate).toHaveBeenCalled();
       expect(productsService.findByIdPublic).toHaveBeenCalled();
     });
@@ -213,6 +226,21 @@ describe('OrdersService', () => {
           items: [{ productId: 'product-uuid', quantity: 1 }],
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should rollback on order save failure', async () => {
+      customersService.findOrCreate.mockResolvedValue(mockCustomer as any);
+      productsService.findByIdPublic.mockResolvedValue(mockProduct as any);
+      orderRepository.create.mockReturnValue(mockOrder);
+      orderRepository.save.mockRejectedValue(new Error('DB error'));
+
+      await expect(
+        service.createPublicOrder({
+          customerName: 'John Doe',
+          customerPhone: '+1234567890',
+          items: [{ productId: 'product-uuid', quantity: 1 }],
+        }),
+      ).rejects.toThrow('DB error');
     });
   });
 

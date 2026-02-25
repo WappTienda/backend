@@ -150,6 +150,28 @@ describe('CustomersService', () => {
       expect(result).toEqual(mockCustomer);
       expect(repository.create).toHaveBeenCalled();
     });
+
+    it('should use provided EntityManager when given', async () => {
+      const mockManagerRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockReturnValue(mockCustomer),
+        save: jest.fn().mockResolvedValue(mockCustomer),
+      };
+      const mockManager = {
+        getRepository: jest.fn().mockReturnValue(mockManagerRepo),
+      } as any;
+
+      const result = await service.findOrCreate(
+        { name: 'New Customer', phone: '+9876543210' },
+        mockManager,
+      );
+
+      expect(mockManager.getRepository).toHaveBeenCalled();
+      expect(mockManagerRepo.findOne).toHaveBeenCalled();
+      expect(result).toEqual(mockCustomer);
+      // The injected repository should NOT have been used
+      expect(repository.findOne).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {

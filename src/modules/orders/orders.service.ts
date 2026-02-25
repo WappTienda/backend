@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreatePublicOrderDto, UpdateOrderDto, OrderQueryDto } from './dto';
@@ -21,6 +21,7 @@ export class OrdersService {
     private readonly orderItemRepository: Repository<OrderItem>,
     private readonly customersService: CustomersService,
     private readonly productsService: ProductsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll(query: OrderQueryDto): Promise<PaginatedResponseDto<Order>> {
@@ -77,58 +78,67 @@ export class OrdersService {
   }
 
   async createPublicOrder(dto: CreatePublicOrderDto): Promise<Order> {
-    // Find or create customer
-    const customer = await this.customersService.findOrCreate({
-      name: dto.customerName,
-      phone: dto.customerPhone,
-      address: dto.customerAddress,
-    });
-
-    // Validate products and create order items
-    const orderItems: Partial<OrderItem>[] = [];
-    let totalAmount = 0;
-
-    for (const itemDto of dto.items) {
-      const product = await this.productsService.findByIdPublic(
-        itemDto.productId,
+    return this.dataSource.transaction(async (manager) => {
+      // Find or create customer within transaction
+      const customer = await this.customersService.findOrCreate(
+        {
+          name: dto.customerName,
+          phone: dto.customerPhone,
+          address: dto.customerAddress,
+        },
+        manager,
       );
 
-      if (!product.isInStock) {
-        throw new BadRequestException(
-          `Product ${product.name} is out of stock`,
+      // Validate products and create order items
+      const orderItems: Partial<OrderItem>[] = [];
+      let totalAmount = 0;
+
+      for (const itemDto of dto.items) {
+        const product = await this.productsService.findByIdPublic(
+          itemDto.productId,
         );
+
+        if (!product.isInStock) {
+          throw new BadRequestException(
+            `Product ${product.name} is out of stock`,
+          );
+        }
+
+        const unitPrice =
+          product.salePrice && product.salePrice > 0
+            ? product.salePrice
+            : product.price;
+        const subtotal = Number(unitPrice) * itemDto.quantity;
+
+        orderItems.push({
+          productId: product.id,
+          productName: product.name,
+          productSku: product.sku,
+          quantity: itemDto.quantity,
+          unitPrice: Number(unitPrice),
+          subtotal,
+        });
+
+        totalAmount += subtotal;
       }
 
-      const unitPrice =
-        product.salePrice && product.salePrice > 0
-          ? product.salePrice
-          : product.price;
-      const subtotal = Number(unitPrice) * itemDto.quantity;
-
-      orderItems.push({
-        productId: product.id,
-        productName: product.name,
-        productSku: product.sku,
-        quantity: itemDto.quantity,
-        unitPrice: Number(unitPrice),
-        subtotal,
+      // Create order using the transactional manager
+      const orderRepo = manager.getRepository(Order);
+      const order = orderRepo.create({
+        customerId: customer.id,
+        customerNote: dto.customerNote,
+        status: OrderStatus.PENDING,
+        totalAmount,
+        items: orderItems as OrderItem[],
       });
 
-      totalAmount += subtotal;
-    }
+      const savedOrder = await orderRepo.save(order);
 
-    // Create order
-    const order = this.orderRepository.create({
-      customerId: customer.id,
-      customerNote: dto.customerNote,
-      status: OrderStatus.PENDING,
-      totalAmount,
-      items: orderItems as OrderItem[],
+      return orderRepo.findOne({
+        where: { id: savedOrder.id },
+        relations: ['customer', 'items', 'items.product'],
+      }) as Promise<Order>;
     });
-
-    const savedOrder = await this.orderRepository.save(order);
-
-    return this.findById(savedOrder.id);
   }
 
   async update(id: string, dto: UpdateOrderDto): Promise<Order> {
