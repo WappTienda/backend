@@ -1,58 +1,67 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { SettingsService } from './settings.service';
-import { Setting } from './entities/setting.entity';
+import { SettingsService } from './domain/services/settings-domain.service';
+import { SettingModel } from './domain/models/setting.model';
+import {
+  SETTING_REPOSITORY,
+  SettingRepositoryPort,
+} from './domain/ports/out/setting-repository.port';
 
 describe('SettingsService', () => {
   let service: SettingsService;
-  let repository: jest.Mocked<Repository<Setting>>;
+  let repository: jest.Mocked<SettingRepositoryPort>;
 
-  const mockSetting: Setting = {
+  const mockSetting: SettingModel = Object.assign(new SettingModel(), {
     id: 'setting-uuid',
     key: 'businessName',
     value: 'Mi Tienda',
     description: 'Nombre del negocio',
     isPublic: true,
     updatedAt: new Date(),
+  });
+
+  const mockSettingRepository: jest.Mocked<SettingRepositoryPort> = {
+    findAll: jest.fn(),
+    findPublic: jest.fn(),
+    findByKey: jest.fn(),
+    save: jest.fn(),
+    create: jest.fn(),
   };
 
   beforeEach(async () => {
-    const mockRepository = {
-      find: jest.fn(),
-      findOne: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-    };
+    jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SettingsService,
-        { provide: getRepositoryToken(Setting), useValue: mockRepository },
+        { provide: SETTING_REPOSITORY, useValue: mockSettingRepository },
       ],
     }).compile();
 
     service = module.get<SettingsService>(SettingsService);
-    repository = module.get(getRepositoryToken(Setting));
+    repository = module.get(SETTING_REPOSITORY);
   });
 
   describe('findAll', () => {
     it('should return all settings ordered by key', async () => {
-      repository.find.mockResolvedValue([mockSetting]);
+      repository.findAll.mockResolvedValue([mockSetting]);
 
       const result = await service.findAll();
 
       expect(result).toEqual([mockSetting]);
-      expect(repository.find).toHaveBeenCalledWith({ order: { key: 'ASC' } });
+      expect(repository.findAll).toHaveBeenCalled();
     });
   });
 
   describe('findPublic', () => {
     it('should return public settings as key-value object', async () => {
-      repository.find.mockResolvedValue([
+      repository.findPublic.mockResolvedValue([
         mockSetting,
-        { ...mockSetting, key: 'currency', value: 'ARS' },
+        Object.assign(new SettingModel(), {
+          ...mockSetting,
+          key: 'currency',
+          value: 'ARS',
+        }),
       ]);
 
       const result = await service.findPublic();
@@ -61,13 +70,11 @@ describe('SettingsService', () => {
         businessName: 'Mi Tienda',
         currency: 'ARS',
       });
-      expect(repository.find).toHaveBeenCalledWith({
-        where: { isPublic: true },
-      });
+      expect(repository.findPublic).toHaveBeenCalled();
     });
 
     it('should return empty object when no public settings', async () => {
-      repository.find.mockResolvedValue([]);
+      repository.findPublic.mockResolvedValue([]);
 
       const result = await service.findPublic();
 
@@ -77,7 +84,7 @@ describe('SettingsService', () => {
 
   describe('getValue', () => {
     it('should return setting value when found', async () => {
-      repository.findOne.mockResolvedValue(mockSetting);
+      repository.findByKey.mockResolvedValue(mockSetting);
 
       const result = await service.getValue('businessName');
 
@@ -85,7 +92,7 @@ describe('SettingsService', () => {
     });
 
     it('should return null when setting not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      repository.findByKey.mockResolvedValue(null);
 
       const result = await service.getValue('unknownKey');
 
@@ -95,11 +102,13 @@ describe('SettingsService', () => {
 
   describe('update', () => {
     it('should update existing setting', async () => {
-      repository.findOne.mockResolvedValue(mockSetting);
-      repository.save.mockResolvedValue({
-        ...mockSetting,
-        value: 'Nueva Tienda',
-      });
+      repository.findByKey.mockResolvedValue(mockSetting);
+      repository.save.mockResolvedValue(
+        Object.assign(new SettingModel(), {
+          ...mockSetting,
+          value: 'Nueva Tienda',
+        }),
+      );
 
       const result = await service.update({
         key: 'businessName',
@@ -111,16 +120,14 @@ describe('SettingsService', () => {
     });
 
     it('should create new setting when not found', async () => {
-      repository.findOne.mockResolvedValue(null);
-      repository.create.mockReturnValue({
-        key: 'newSetting',
-        value: 'newValue',
-      } as Setting);
-      repository.save.mockResolvedValue({
-        id: 'new-uuid',
-        key: 'newSetting',
-        value: 'newValue',
-      } as Setting);
+      repository.findByKey.mockResolvedValue(null);
+      repository.create.mockResolvedValue(
+        Object.assign(new SettingModel(), {
+          id: 'new-uuid',
+          key: 'newSetting',
+          value: 'newValue',
+        }),
+      );
 
       const result = await service.update({
         key: 'newSetting',
@@ -132,8 +139,10 @@ describe('SettingsService', () => {
     });
 
     it('should handle empty value', async () => {
-      repository.findOne.mockResolvedValue(mockSetting);
-      repository.save.mockResolvedValue({ ...mockSetting, value: '' });
+      repository.findByKey.mockResolvedValue(mockSetting);
+      repository.save.mockResolvedValue(
+        Object.assign(new SettingModel(), { ...mockSetting, value: '' }),
+      );
 
       const result = await service.update({ key: 'businessName', value: '' });
 
@@ -143,9 +152,9 @@ describe('SettingsService', () => {
 
   describe('updateMany', () => {
     it('should update multiple settings', async () => {
-      repository.findOne.mockResolvedValue(mockSetting);
+      repository.findByKey.mockResolvedValue(mockSetting);
       repository.save.mockImplementation((setting) =>
-        Promise.resolve(setting as Setting),
+        Promise.resolve(setting),
       );
 
       const result = await service.updateMany([
