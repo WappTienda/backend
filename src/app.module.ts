@@ -2,11 +2,12 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { configuration } from './config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HttpLoggerMiddleware } from './common/middlewares';
-import { JwtAuthGuard } from './modules/auth/guards';
+import { JwtAuthGuard } from './modules/auth/infrastructure/guards/jwt-auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CategoriesModule } from './modules/categories/categories.module';
@@ -16,6 +17,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -23,6 +25,13 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
       isGlobal: true,
       load: [configuration],
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000,
+        limit: 60,
+      },
+    ]),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -34,7 +43,8 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
         password: configService.get('database.password'),
         database: configService.get('database.database'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: configService.get('nodeEnv') === 'development',
+        migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
+        synchronize: false,
         logging: configService.get('nodeEnv') === 'development',
       }),
     }),
@@ -47,10 +57,17 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     SettingsModule,
     UploadsModule,
     AnalyticsModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    // ThrottlerGuard must be registered before JwtAuthGuard so rate limiting
+    // is enforced prior to authentication checks, preventing brute-force attacks.
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

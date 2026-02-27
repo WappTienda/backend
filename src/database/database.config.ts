@@ -10,7 +10,7 @@ export const databaseConfig = registerAs('database', () => ({
   database: process.env.DB_DATABASE || 'whatsapp_ecommerce',
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
-  synchronize: process.env.NODE_ENV === 'development',
+  synchronize: false,
   logging: process.env.NODE_ENV === 'development',
 }));
 
