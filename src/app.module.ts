@@ -2,6 +2,7 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { configuration } from './config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -23,6 +24,13 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
       isGlobal: true,
       load: [configuration],
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000,
+        limit: 60,
+      },
+    ]),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -52,6 +60,12 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
   controllers: [AppController],
   providers: [
     AppService,
+    // ThrottlerGuard must be registered before JwtAuthGuard so rate limiting
+    // is enforced prior to authentication checks, preventing brute-force attacks.
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
