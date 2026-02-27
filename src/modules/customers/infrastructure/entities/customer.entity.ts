@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { Order } from '../../../orders/infrastructure/entities/order.entity';
 
@@ -16,6 +17,7 @@ export class Customer {
   @Column()
   name: string;
 
+  @Index()
   @Column()
   phone: string;
 
