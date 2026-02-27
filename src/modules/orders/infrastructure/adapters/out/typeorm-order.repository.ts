@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Order } from '../../entities/order.entity';
@@ -12,14 +13,13 @@ import {
   CreatePublicOrderData,
 } from '../../../domain/ports/out/order-repository.port';
 import { Customer } from '../../../../customers/infrastructure/entities/customer.entity';
+import { Product } from '../../../../products/infrastructure/entities/product.entity';
 
 @Injectable()
 export class TypeOrmOrderRepository implements OrderRepositoryPort {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
-    @InjectRepository(OrderItem)
-    private readonly orderItemRepository: Repository<OrderItem>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -122,6 +122,31 @@ export class TypeOrmOrderRepository implements OrderRepositoryPort {
       });
 
       const saved = await manager.save(order);
+
+      // Atomically reduce stock for products that track inventory
+      for (const item of data.items) {
+        const updateResult = await manager
+          .createQueryBuilder()
+          .update(Product)
+          .set({ stockQuantity: () => '"stockQuantity" - :qty' })
+          .where(
+            '"id" = :id AND "trackInventory" = true AND "stockQuantity" >= :qty',
+            { id: item.productId, qty: item.quantity },
+          )
+          .execute();
+
+        if (updateResult.affected === 0) {
+          const product = await manager.findOne(Product, {
+            where: { id: item.productId },
+          });
+          if (product?.trackInventory) {
+            throw new BadRequestException(
+              `Insufficient stock for product ${item.productName}`,
+            );
+          }
+        }
+      }
+
       return OrderMapper.toDomain(saved);
     });
   }

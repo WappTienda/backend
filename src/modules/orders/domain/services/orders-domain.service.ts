@@ -77,6 +77,12 @@ export class OrdersService implements OrdersUseCasePort {
         );
       }
 
+      if (product.trackInventory && product.stockQuantity < itemDto.quantity) {
+        throw new BadRequestException(
+          `Insufficient stock for product ${product.name}`,
+        );
+      }
+
       const unitPrice =
         product.salePrice && product.salePrice > 0
           ? product.salePrice

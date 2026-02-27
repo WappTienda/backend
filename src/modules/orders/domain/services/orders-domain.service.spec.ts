@@ -31,6 +31,8 @@ describe('OrdersService', () => {
     price: 100,
     salePrice: 80,
     isInStock: true,
+    trackInventory: true,
+    stockQuantity: 10,
   };
 
   const mockOrder: OrderModel = Object.assign(new OrderModel(), {
@@ -197,6 +199,41 @@ describe('OrdersService', () => {
           items: [{ productId: 'product-uuid', quantity: 1 }],
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when quantity exceeds available stock', async () => {
+      productsService.findByIdPublic.mockResolvedValue({
+        ...mockProduct,
+        trackInventory: true,
+        stockQuantity: 2,
+      } as any);
+
+      await expect(
+        service.createPublicOrder({
+          customerName: 'John Doe',
+          customerPhone: '+1234567890',
+          items: [{ productId: 'product-uuid', quantity: 5 }],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should create order for non-tracked inventory product when stockQuantity is zero', async () => {
+      productsService.findByIdPublic.mockResolvedValue({
+        ...mockProduct,
+        trackInventory: false,
+        stockQuantity: 0,
+        isInStock: true,
+      } as any);
+      orderRepository.createPublicOrder.mockResolvedValue(mockOrder);
+      orderRepository.findById.mockResolvedValue(mockOrder);
+
+      const result = await service.createPublicOrder({
+        customerName: 'John Doe',
+        customerPhone: '+1234567890',
+        items: [{ productId: 'product-uuid', quantity: 100 }],
+      });
+
+      expect(result).toEqual(mockOrder);
     });
 
     it('should roll back if repository throws during creation', async () => {
