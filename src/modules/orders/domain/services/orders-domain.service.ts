@@ -16,7 +16,6 @@ import {
   OrderQueryDto,
 } from '../../application/dto';
 import { PaginatedResponseDto } from '../../../../common/dto';
-import { CustomersService } from '../../../customers';
 import { ProductsService } from '../../../products';
 
 @Injectable()
@@ -24,7 +23,6 @@ export class OrdersService implements OrdersUseCasePort {
   constructor(
     @Inject(ORDER_REPOSITORY)
     private readonly orderRepository: OrderRepositoryPort,
-    private readonly customersService: CustomersService,
     private readonly productsService: ProductsService,
   ) {}
 
@@ -57,14 +55,7 @@ export class OrdersService implements OrdersUseCasePort {
   }
 
   async createPublicOrder(dto: CreatePublicOrderDto): Promise<OrderModel> {
-    // Find or create customer
-    const customer = await this.customersService.findOrCreate({
-      name: dto.customerName,
-      phone: dto.customerPhone,
-      address: dto.customerAddress,
-    });
-
-    // Validate products and create order items
+    // Validate products and build order items (read-only, before transaction)
     const orderItems: {
       productId: string;
       productName: string;
@@ -104,9 +95,11 @@ export class OrdersService implements OrdersUseCasePort {
       totalAmount += subtotal;
     }
 
-    // Create order
-    const savedOrder = await this.orderRepository.create({
-      customerId: customer.id,
+    // Create customer and order atomically in a single transaction
+    const savedOrder = await this.orderRepository.createPublicOrder({
+      customerName: dto.customerName,
+      customerPhone: dto.customerPhone,
+      customerAddress: dto.customerAddress,
       customerNote: dto.customerNote,
       status: OrderStatus.PENDING,
       totalAmount,
