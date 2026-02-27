@@ -20,8 +20,6 @@ export class TypeOrmOrderRepository implements OrderRepositoryPort {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
-    @InjectRepository(OrderItem)
-    private readonly orderItemRepository: Repository<OrderItem>,
     private readonly dataSource: DataSource,
   ) {}
 
