@@ -10,13 +10,11 @@ import {
   ORDER_REPOSITORY,
   OrderRepositoryPort,
 } from '../ports/out/order-repository.port';
-import { CustomersService } from '../../../customers/domain/services/customers-domain.service';
 import { ProductsService } from '../../../products/domain/services/products-domain.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
   let orderRepository: jest.Mocked<OrderRepositoryPort>;
-  let customersService: any;
   let productsService: any;
 
   const mockCustomer = {
@@ -54,16 +52,13 @@ describe('OrdersService', () => {
     findById: jest.fn(),
     findByPublicId: jest.fn(),
     create: jest.fn(),
+    createPublicOrder: jest.fn(),
     save: jest.fn(),
     remove: jest.fn(),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
-
-    const mockCustomersService = {
-      findOrCreate: jest.fn(),
-    };
 
     const mockProductsService = {
       findByIdPublic: jest.fn(),
@@ -73,14 +68,12 @@ describe('OrdersService', () => {
       providers: [
         OrdersService,
         { provide: ORDER_REPOSITORY, useValue: mockOrderRepository },
-        { provide: CustomersService, useValue: mockCustomersService },
         { provide: ProductsService, useValue: mockProductsService },
       ],
     }).compile();
 
     service = module.get<OrdersService>(OrdersService);
     orderRepository = module.get(ORDER_REPOSITORY);
-    customersService = module.get(CustomersService);
     productsService = module.get(ProductsService);
   });
 
@@ -169,9 +162,8 @@ describe('OrdersService', () => {
 
   describe('createPublicOrder', () => {
     it('should create a new order', async () => {
-      customersService.findOrCreate.mockResolvedValue(mockCustomer as any);
       productsService.findByIdPublic.mockResolvedValue(mockProduct as any);
-      orderRepository.create.mockResolvedValue(mockOrder);
+      orderRepository.createPublicOrder.mockResolvedValue(mockOrder);
       orderRepository.findById.mockResolvedValue(mockOrder);
 
       const result = await service.createPublicOrder({
@@ -181,12 +173,18 @@ describe('OrdersService', () => {
       });
 
       expect(result).toEqual(mockOrder);
-      expect(customersService.findOrCreate).toHaveBeenCalled();
       expect(productsService.findByIdPublic).toHaveBeenCalled();
+      expect(orderRepository.createPublicOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerName: 'John Doe',
+          customerPhone: '+1234567890',
+          status: OrderStatus.PENDING,
+          totalAmount: 80,
+        }),
+      );
     });
 
     it('should throw BadRequestException when product is out of stock', async () => {
-      customersService.findOrCreate.mockResolvedValue(mockCustomer as any);
       productsService.findByIdPublic.mockResolvedValue({
         ...mockProduct,
         isInStock: false,
@@ -199,6 +197,23 @@ describe('OrdersService', () => {
           items: [{ productId: 'product-uuid', quantity: 1 }],
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should roll back if repository throws during creation', async () => {
+      productsService.findByIdPublic.mockResolvedValue(mockProduct as any);
+      orderRepository.createPublicOrder.mockRejectedValue(
+        new Error('DB error'),
+      );
+
+      await expect(
+        service.createPublicOrder({
+          customerName: 'John Doe',
+          customerPhone: '+1234567890',
+          items: [{ productId: 'product-uuid', quantity: 1 }],
+        }),
+      ).rejects.toThrow('DB error');
+
+      expect(orderRepository.createPublicOrder).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Order } from '../../entities/order.entity';
 import { OrderItem } from '../../entities/order-item.entity';
 import { OrderMapper } from '../../mappers/order.mapper';
@@ -9,7 +9,9 @@ import {
   OrderRepositoryPort,
   FindOrdersQuery,
   PaginatedOrders,
+  CreatePublicOrderData,
 } from '../../../domain/ports/out/order-repository.port';
+import { Customer } from '../../../../customers/infrastructure/entities/customer.entity';
 
 @Injectable()
 export class TypeOrmOrderRepository implements OrderRepositoryPort {
@@ -18,6 +20,7 @@ export class TypeOrmOrderRepository implements OrderRepositoryPort {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepository: Repository<OrderItem>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll(query: FindOrdersQuery): Promise<PaginatedOrders> {
@@ -86,6 +89,41 @@ export class TypeOrmOrderRepository implements OrderRepositoryPort {
 
     const saved = await this.orderRepository.save(entity);
     return OrderMapper.toDomain(saved);
+  }
+
+  async createPublicOrder(data: CreatePublicOrderData): Promise<OrderModel> {
+    return this.dataSource.transaction(async (manager) => {
+      // Find or create customer within the transaction
+      let customer = await manager.findOne(Customer, {
+        where: { phone: data.customerPhone },
+      });
+
+      if (!customer) {
+        customer = manager.create(Customer, {
+          name: data.customerName,
+          phone: data.customerPhone,
+          address: data.customerAddress,
+        });
+        customer = await manager.save(customer);
+      } else {
+        if (data.customerName) customer.name = data.customerName;
+        if (data.customerAddress) customer.address = data.customerAddress;
+        customer = await manager.save(customer);
+      }
+
+      // Create order with items within the same transaction
+      const order = manager.create(Order, {
+        customerId: customer.id,
+        customerNote: data.customerNote,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        status: data.status as any,
+        totalAmount: data.totalAmount,
+        items: data.items as OrderItem[],
+      });
+
+      const saved = await manager.save(order);
+      return OrderMapper.toDomain(saved);
+    });
   }
 
   async save(order: OrderModel): Promise<OrderModel> {
