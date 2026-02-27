@@ -7,6 +7,7 @@ import {
   DeleteDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { Category } from '../../../categories/infrastructure/entities/category.entity';
 
@@ -33,6 +34,7 @@ export class Product {
   @Column({ nullable: true })
   imageUrl: string;
 
+  @Index()
   @Column({ nullable: true })
   categoryId: string;
 

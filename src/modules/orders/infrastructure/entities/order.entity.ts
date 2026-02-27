@@ -8,6 +8,7 @@ import {
   OneToMany,
   JoinColumn,
   BeforeInsert,
+  Index,
 } from 'typeorm';
 import { nanoid } from 'nanoid';
 import { Customer } from '../../../customers/infrastructure/entities/customer.entity';
@@ -31,6 +32,7 @@ export class Order {
   @JoinColumn({ name: 'customerId' })
   customer: Customer;
 
+  @Index()
   @Column({
     type: 'enum',
     enum: OrderStatus,
