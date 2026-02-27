@@ -1,16 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import { HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
+import {
+  HealthIndicatorResult,
+  HealthIndicatorService,
+} from '@nestjs/terminus';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
 @Injectable()
-export class S3HealthIndicator extends HealthIndicator {
+export class S3HealthIndicator {
   private readonly s3Client: S3Client;
   private readonly bucket: string;
 
-  constructor(private readonly configService: ConfigService) {
-    super();
-
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly healthIndicatorService: HealthIndicatorService,
+  ) {
     const region = this.configService.get<string>('aws.region', 'us-east-1');
     const endpoint = this.configService.get<string>('aws.s3Endpoint');
     this.bucket = this.configService.get<string>('aws.s3Bucket', '');
@@ -35,6 +39,7 @@ export class S3HealthIndicator extends HealthIndicator {
   }
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
+    const indicator = this.healthIndicatorService.check(key);
     const accessKeyId = this.configService.get<string>('aws.accessKeyId', '');
     const secretAccessKey = this.configService.get<string>(
       'aws.secretAccessKey',
@@ -42,18 +47,18 @@ export class S3HealthIndicator extends HealthIndicator {
     );
 
     if (!this.bucket || !accessKeyId || !secretAccessKey) {
-      return this.getStatus(key, false, {
+      return indicator.down({
         message: 'S3 not configured (missing bucket or credentials)',
       });
     }
 
     try {
       await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucket }));
-      return this.getStatus(key, true);
+      return indicator.up();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'S3 connection failed';
-      return this.getStatus(key, false, { message });
+      return indicator.down({ message });
     }
   }
 }
