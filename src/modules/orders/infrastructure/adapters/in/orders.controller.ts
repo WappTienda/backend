@@ -17,6 +17,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { OrdersService } from '../../../domain/services/orders-domain.service';
 import { SettingsService } from '../../../../settings';
 import {
@@ -29,6 +30,7 @@ import { Public } from '../../../../../common/decorators';
 import { PaginatedResponseDto } from '../../../../../common/dto';
 
 @ApiTags('Orders')
+@SkipThrottle()
 @Controller('orders')
 export class OrdersController {
   constructor(
@@ -74,6 +76,8 @@ export class OrdersController {
   }
 
   @Public()
+  @SkipThrottle({ default: false })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('public')
   @ApiOperation({ summary: 'Create a new order (public)' })
   @ApiResponse({ status: 201 })
