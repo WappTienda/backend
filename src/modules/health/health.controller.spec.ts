@@ -2,7 +2,11 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Test, TestingModule } from '@nestjs/testing';
-import { HealthCheckService, TypeOrmHealthIndicator } from '@nestjs/terminus';
+import {
+  HealthCheckService,
+  HealthIndicatorFunction,
+  TypeOrmHealthIndicator,
+} from '@nestjs/terminus';
 import { HealthController } from './health.controller';
 import { S3HealthIndicator } from './indicators/s3-health.indicator';
 
@@ -70,8 +74,8 @@ describe('HealthController', () => {
       s3Indicator.isHealthy.mockResolvedValue(s3Result as any);
 
       healthCheckService.check.mockImplementation(
-        async (checks: (() => Promise<unknown>)[]) => {
-          await Promise.all(checks.map((fn) => fn()));
+        async (checks: HealthIndicatorFunction[]) => {
+          await Promise.all(checks.map((fn) => Promise.resolve(fn())));
           return mockHealthResult as any;
         },
       );
