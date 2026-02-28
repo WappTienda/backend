@@ -69,10 +69,12 @@ describe('HealthController', () => {
       dbIndicator.pingCheck.mockResolvedValue(dbResult as any);
       s3Indicator.isHealthy.mockResolvedValue(s3Result as any);
 
-      healthCheckService.check.mockImplementation(async (checks) => {
-        await Promise.all(checks.map((fn) => fn()));
-        return mockHealthResult as any;
-      });
+      healthCheckService.check.mockImplementation(
+        async (checks: (() => Promise<unknown>)[]) => {
+          await Promise.all(checks.map((fn) => fn()));
+          return mockHealthResult as any;
+        },
+      );
 
       await controller.check();
 
