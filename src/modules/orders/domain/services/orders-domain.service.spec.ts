@@ -55,6 +55,8 @@ describe('OrdersService', () => {
     findByPublicId: jest.fn(),
     create: jest.fn(),
     createPublicOrder: jest.fn(),
+    releaseInventory: jest.fn(),
+    cancelOrderAndReleaseInventory: jest.fn(),
     save: jest.fn(),
     remove: jest.fn(),
   };
@@ -267,6 +269,50 @@ describe('OrdersService', () => {
       });
 
       expect(result.status).toBe(OrderStatus.CONFIRMED);
+      expect(orderRepository.cancelOrderAndReleaseInventory).not.toHaveBeenCalled();
+    });
+
+    it('should call cancelOrderAndReleaseInventory when cancelling an order', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.cancelOrderAndReleaseInventory.mockResolvedValue(true);
+
+      await service.update('order-uuid', { status: OrderStatus.CANCELLED });
+
+      expect(orderRepository.cancelOrderAndReleaseInventory).toHaveBeenCalledWith(
+        mockOrder.id,
+      );
+    });
+
+    it('should also save additional fields when cancelling with adminNote', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.cancelOrderAndReleaseInventory.mockResolvedValue(true);
+      orderRepository.save.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.CANCELLED,
+        adminNote: 'Cancelled by admin',
+      } as OrderModel);
+
+      await service.update('order-uuid', {
+        status: OrderStatus.CANCELLED,
+        adminNote: 'Cancelled by admin',
+      });
+
+      expect(orderRepository.cancelOrderAndReleaseInventory).toHaveBeenCalledWith(
+        mockOrder.id,
+      );
+      expect(orderRepository.save).toHaveBeenCalled();
+    });
+
+    it('should not call cancelOrderAndReleaseInventory when transitioning to non-cancelled status', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.save.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.CONFIRMED,
+      } as OrderModel);
+
+      await service.update('order-uuid', { status: OrderStatus.CONFIRMED });
+
+      expect(orderRepository.cancelOrderAndReleaseInventory).not.toHaveBeenCalled();
     });
   });
 

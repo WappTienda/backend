@@ -5,7 +5,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Order } from '../../entities/order.entity';
 import { OrderItem } from '../../entities/order-item.entity';
 import { OrderMapper } from '../../mappers/order.mapper';
-import { OrderModel } from '../../../domain/models/order.model';
+import { OrderModel, OrderStatus } from '../../../domain/models/order.model';
 import {
   OrderRepositoryPort,
   FindOrdersQuery,
@@ -148,6 +148,59 @@ export class TypeOrmOrderRepository implements OrderRepositoryPort {
       }
 
       return OrderMapper.toDomain(saved);
+    });
+  }
+
+  async releaseInventory(orderId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const items = await manager.find(OrderItem, { where: { orderId } });
+
+      for (const item of items) {
+        await manager
+          .createQueryBuilder()
+          .update(Product)
+          .set({ stockQuantity: () => '"stockQuantity" + :qty' })
+          .where('"id" = :id AND "trackInventory" = true', {
+            id: item.productId,
+            qty: item.quantity,
+          })
+          .execute();
+      }
+    });
+  }
+
+  async cancelOrderAndReleaseInventory(orderId: string): Promise<boolean> {
+    return this.dataSource.transaction(async (manager) => {
+      // Atomically update status to CANCELLED only if not already cancelled
+      const updateResult = await manager
+        .createQueryBuilder()
+        .update(Order)
+        .set({ status: OrderStatus.CANCELLED })
+        .where('"id" = :id AND "status" != :status', {
+          id: orderId,
+          status: OrderStatus.CANCELLED,
+        })
+        .execute();
+
+      if (updateResult.affected === 0) {
+        return false;
+      }
+
+      const items = await manager.find(OrderItem, { where: { orderId } });
+
+      for (const item of items) {
+        await manager
+          .createQueryBuilder()
+          .update(Product)
+          .set({ stockQuantity: () => '"stockQuantity" + :qty' })
+          .where('"id" = :id AND "trackInventory" = true', {
+            id: item.productId,
+            qty: item.quantity,
+          })
+          .execute();
+      }
+
+      return true;
     });
   }
 

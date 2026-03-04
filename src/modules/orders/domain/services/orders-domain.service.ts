@@ -117,8 +117,21 @@ export class OrdersService implements OrdersUseCasePort {
 
   async update(id: string, dto: UpdateOrderDto): Promise<OrderModel> {
     const order = await this.findById(id);
-    Object.assign(order, dto);
-    await this.orderRepository.save(order);
+
+    if (dto.status === OrderStatus.CANCELLED) {
+      await this.orderRepository.cancelOrderAndReleaseInventory(order.id);
+      // Save any remaining fields (e.g., adminNote) without overwriting the status
+      const { status: _status, ...otherFields } = dto;
+      if (Object.keys(otherFields).length > 0) {
+        Object.assign(order, otherFields);
+        order.status = OrderStatus.CANCELLED;
+        await this.orderRepository.save(order);
+      }
+    } else {
+      Object.assign(order, dto);
+      await this.orderRepository.save(order);
+    }
+
     return this.findById(id);
   }
 
