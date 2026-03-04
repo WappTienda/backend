@@ -44,7 +44,7 @@ export interface OrderRepositoryPort {
     items: Partial<OrderItem>[];
   }): Promise<OrderModel>;
   createPublicOrder(data: CreatePublicOrderData): Promise<OrderModel>;
-  releaseInventory(orderId: string): Promise<void>;
+  confirmOrderAndCommitInventory(orderId: string): Promise<boolean>;
   cancelOrderAndReleaseInventory(orderId: string): Promise<boolean>;
   save(order: OrderModel): Promise<OrderModel>;
   remove(order: OrderModel): Promise<void>;

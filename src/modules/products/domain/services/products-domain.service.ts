@@ -18,6 +18,7 @@ import {
 } from '../../application/dto';
 import { PaginatedResponseDto } from '../../../../common/dto';
 import { CategoriesService } from '../../../categories/domain/services/categories-domain.service';
+import { InventoryService } from '../../../inventory/domain/services/inventory-domain.service';
 
 @Injectable()
 export class ProductsService implements ProductsUseCasePort {
@@ -25,6 +26,7 @@ export class ProductsService implements ProductsUseCasePort {
     @Inject(PRODUCT_REPOSITORY)
     private readonly productRepository: ProductRepositoryPort,
     private readonly categoriesService: CategoriesService,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   async findAllPublic(
@@ -76,7 +78,16 @@ export class ProductsService implements ProductsUseCasePort {
 
     this.validatePricing(dto.price, dto.salePrice);
 
-    return this.productRepository.create(dto);
+    const product = await this.productRepository.create(dto);
+
+    if (product.trackInventory) {
+      await this.inventoryService.initializeForProduct(
+        product.id,
+        product.stockQuantity ?? 0,
+      );
+    }
+
+    return product;
   }
 
   async update(id: string, dto: UpdateProductDto): Promise<ProductModel> {
@@ -91,8 +102,30 @@ export class ProductsService implements ProductsUseCasePort {
       dto.salePrice !== undefined ? dto.salePrice : product.salePrice;
     this.validatePricing(newPrice, newSalePrice);
 
+    const wasTracking = product.trackInventory;
+    const nowTracking =
+      dto.trackInventory !== undefined ? dto.trackInventory : wasTracking;
+
     Object.assign(product, dto);
-    return this.productRepository.save(product);
+    const saved = await this.productRepository.save(product);
+
+    if (nowTracking) {
+      if (!wasTracking) {
+        // Product just enabled inventory tracking — initialize inventory record
+        await this.inventoryService.initializeForProduct(
+          saved.id,
+          saved.stockQuantity ?? 0,
+        );
+      } else if (dto.stockQuantity !== undefined) {
+        // Stock quantity updated for an already-tracked product — sync inventory
+        await this.inventoryService.syncStockForProduct(
+          saved.id,
+          saved.stockQuantity,
+        );
+      }
+    }
+
+    return saved;
   }
 
   async delete(id: string): Promise<void> {

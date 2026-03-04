@@ -55,7 +55,7 @@ describe('OrdersService', () => {
     findByPublicId: jest.fn(),
     create: jest.fn(),
     createPublicOrder: jest.fn(),
-    releaseInventory: jest.fn(),
+    confirmOrderAndCommitInventory: jest.fn(),
     cancelOrderAndReleaseInventory: jest.fn(),
     save: jest.fn(),
     remove: jest.fn(),
@@ -257,19 +257,52 @@ describe('OrdersService', () => {
   });
 
   describe('update', () => {
-    it('should update order status', async () => {
+    it('should update order status to CONTACTED without inventory changes', async () => {
       orderRepository.findById.mockResolvedValue(mockOrder);
       orderRepository.save.mockResolvedValue({
         ...mockOrder,
-        status: OrderStatus.CONFIRMED,
+        status: OrderStatus.CONTACTED,
       } as OrderModel);
 
       const result = await service.update('order-uuid', {
-        status: OrderStatus.CONFIRMED,
+        status: OrderStatus.CONTACTED,
       });
 
-      expect(result.status).toBe(OrderStatus.CONFIRMED);
+      expect(result.status).toBe(OrderStatus.CONTACTED);
+      expect(orderRepository.confirmOrderAndCommitInventory).not.toHaveBeenCalled();
       expect(orderRepository.cancelOrderAndReleaseInventory).not.toHaveBeenCalled();
+    });
+
+    it('should call confirmOrderAndCommitInventory when confirming an order', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.confirmOrderAndCommitInventory.mockResolvedValue(true);
+
+      await service.update('order-uuid', { status: OrderStatus.CONFIRMED });
+
+      expect(orderRepository.confirmOrderAndCommitInventory).toHaveBeenCalledWith(
+        mockOrder.id,
+      );
+      expect(orderRepository.cancelOrderAndReleaseInventory).not.toHaveBeenCalled();
+    });
+
+    it('should also save additional fields when confirming with adminNote', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.confirmOrderAndCommitInventory.mockResolvedValue(true);
+      orderRepository.save.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.CONFIRMED,
+        adminNote: 'Confirmed by admin',
+      } as OrderModel);
+
+      await service.update('order-uuid', {
+        status: OrderStatus.CONFIRMED,
+        adminNote: 'Confirmed by admin',
+      });
+
+      expect(orderRepository.confirmOrderAndCommitInventory).toHaveBeenCalledWith(
+        mockOrder.id,
+      );
+      expect(orderRepository.save).toHaveBeenCalled();
     });
 
     it('should call cancelOrderAndReleaseInventory when cancelling an order', async () => {
@@ -281,6 +314,7 @@ describe('OrdersService', () => {
       expect(orderRepository.cancelOrderAndReleaseInventory).toHaveBeenCalledWith(
         mockOrder.id,
       );
+      expect(orderRepository.confirmOrderAndCommitInventory).not.toHaveBeenCalled();
     });
 
     it('should also save additional fields when cancelling with adminNote', async () => {
@@ -303,15 +337,16 @@ describe('OrdersService', () => {
       expect(orderRepository.save).toHaveBeenCalled();
     });
 
-    it('should not call cancelOrderAndReleaseInventory when transitioning to non-cancelled status', async () => {
+    it('should not call inventory methods when transitioning to non-confirmed/cancelled status', async () => {
       orderRepository.findById.mockResolvedValue(mockOrder);
       orderRepository.save.mockResolvedValue({
         ...mockOrder,
-        status: OrderStatus.CONFIRMED,
+        status: OrderStatus.DELIVERED,
       } as OrderModel);
 
-      await service.update('order-uuid', { status: OrderStatus.CONFIRMED });
+      await service.update('order-uuid', { status: OrderStatus.DELIVERED });
 
+      expect(orderRepository.confirmOrderAndCommitInventory).not.toHaveBeenCalled();
       expect(orderRepository.cancelOrderAndReleaseInventory).not.toHaveBeenCalled();
     });
   });
