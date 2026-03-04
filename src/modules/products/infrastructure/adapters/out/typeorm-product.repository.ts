@@ -23,6 +23,7 @@ export class TypeOrmProductRepository implements ProductRepositoryPort {
     const qb = this.productRepository
       .createQueryBuilder('product')
       .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.images', 'images')
       .where('product.isVisible = :isVisible', { isVisible: true })
       .andWhere('product.isActive = :isActive', { isActive: true });
 
@@ -60,6 +61,7 @@ export class TypeOrmProductRepository implements ProductRepositoryPort {
     const qb = this.productRepository
       .createQueryBuilder('product')
       .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.images', 'images')
       .withDeleted();
 
     if (categoryId) {
@@ -91,6 +93,7 @@ export class TypeOrmProductRepository implements ProductRepositoryPort {
     const qb = this.productRepository
       .createQueryBuilder('product')
       .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.images', 'images')
       .where('product.id = :id', { id });
 
     if (includeDeleted) {
@@ -104,7 +107,7 @@ export class TypeOrmProductRepository implements ProductRepositoryPort {
   async findByIdPublic(id: string): Promise<ProductModel | null> {
     const entity = await this.productRepository.findOne({
       where: { id, isVisible: true, isActive: true },
-      relations: ['category'],
+      relations: ['category', 'images'],
     });
 
     return entity ? ProductMapper.toDomain(entity) : null;

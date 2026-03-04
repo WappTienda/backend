@@ -6,10 +6,12 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   Index,
 } from 'typeorm';
 import { Category } from '../../../categories/infrastructure/entities/category.entity';
+import { ProductImage } from './product-image.entity';
 
 @Entity('products')
 export class Product {
@@ -43,6 +45,12 @@ export class Product {
   })
   @JoinColumn({ name: 'categoryId' })
   category: Category;
+
+  @OneToMany(() => ProductImage, (image) => image.product, {
+    cascade: true,
+    eager: false,
+  })
+  images: ProductImage[];
 
   @Column({ default: 0 })
   stockQuantity: number;
