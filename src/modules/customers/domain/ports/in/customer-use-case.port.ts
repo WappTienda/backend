@@ -16,4 +16,5 @@ export interface CustomerUseCasePort {
   create(dto: CreateCustomerDto): Promise<CustomerModel>;
   findOrCreate(dto: CreateCustomerDto): Promise<CustomerModel>;
   update(id: string, dto: UpdateCustomerDto): Promise<CustomerModel>;
+  delete(id: string): Promise<void>;
 }

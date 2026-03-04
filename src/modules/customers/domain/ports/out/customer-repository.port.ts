@@ -18,4 +18,5 @@ export interface CustomerRepositoryPort {
   findByPhone(phone: string): Promise<CustomerModel | null>;
   create(data: Partial<CustomerModel>): Promise<CustomerModel>;
   save(customer: CustomerModel): Promise<CustomerModel>;
+  delete(id: string): Promise<void>;
 }
