@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders-domain.service';
 import { OrderModel, OrderStatus } from '../models/order.model';
 import {
@@ -30,9 +30,7 @@ describe('OrdersService', () => {
     sku: 'SKU-001',
     price: 100,
     salePrice: 80,
-    isInStock: true,
     trackInventory: true,
-    stockQuantity: 10,
   };
 
   const mockOrder: OrderModel = Object.assign(new OrderModel(), {
@@ -55,6 +53,8 @@ describe('OrdersService', () => {
     findByPublicId: jest.fn(),
     create: jest.fn(),
     createPublicOrder: jest.fn(),
+    confirmOrderAndCommitInventory: jest.fn(),
+    cancelOrderAndReleaseInventory: jest.fn(),
     save: jest.fn(),
     remove: jest.fn(),
   };
@@ -186,27 +186,11 @@ describe('OrdersService', () => {
       );
     });
 
-    it('should throw BadRequestException when product is out of stock', async () => {
-      productsService.findByIdPublic.mockResolvedValue({
-        ...mockProduct,
-        isInStock: false,
-      } as any);
-
-      await expect(
-        service.createPublicOrder({
-          customerName: 'John Doe',
-          customerPhone: '+1234567890',
-          items: [{ productId: 'product-uuid', quantity: 1 }],
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should throw BadRequestException when quantity exceeds available stock', async () => {
-      productsService.findByIdPublic.mockResolvedValue({
-        ...mockProduct,
-        trackInventory: true,
-        stockQuantity: 2,
-      } as any);
+    it('should throw when repository rejects due to insufficient stock', async () => {
+      productsService.findByIdPublic.mockResolvedValue(mockProduct as any);
+      orderRepository.createPublicOrder.mockRejectedValue(
+        new Error('Insufficient stock for product Test Product'),
+      );
 
       await expect(
         service.createPublicOrder({
@@ -214,15 +198,13 @@ describe('OrdersService', () => {
           customerPhone: '+1234567890',
           items: [{ productId: 'product-uuid', quantity: 5 }],
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Insufficient stock for product Test Product');
     });
 
-    it('should create order for non-tracked inventory product when stockQuantity is zero', async () => {
+    it('should create order for non-tracked product', async () => {
       productsService.findByIdPublic.mockResolvedValue({
         ...mockProduct,
         trackInventory: false,
-        stockQuantity: 0,
-        isInStock: true,
       } as any);
       orderRepository.createPublicOrder.mockResolvedValue(mockOrder);
       orderRepository.findById.mockResolvedValue(mockOrder);
@@ -255,18 +237,97 @@ describe('OrdersService', () => {
   });
 
   describe('update', () => {
-    it('should update order status', async () => {
+    it('should update order status to CONTACTED without inventory changes', async () => {
       orderRepository.findById.mockResolvedValue(mockOrder);
       orderRepository.save.mockResolvedValue({
         ...mockOrder,
-        status: OrderStatus.CONFIRMED,
+        status: OrderStatus.CONTACTED,
       } as OrderModel);
 
       const result = await service.update('order-uuid', {
-        status: OrderStatus.CONFIRMED,
+        status: OrderStatus.CONTACTED,
       });
 
-      expect(result.status).toBe(OrderStatus.CONFIRMED);
+      expect(result.status).toBe(OrderStatus.CONTACTED);
+      expect(orderRepository.confirmOrderAndCommitInventory).not.toHaveBeenCalled();
+      expect(orderRepository.cancelOrderAndReleaseInventory).not.toHaveBeenCalled();
+    });
+
+    it('should call confirmOrderAndCommitInventory when confirming an order', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.confirmOrderAndCommitInventory.mockResolvedValue(true);
+
+      await service.update('order-uuid', { status: OrderStatus.CONFIRMED });
+
+      expect(orderRepository.confirmOrderAndCommitInventory).toHaveBeenCalledWith(
+        mockOrder.id,
+      );
+      expect(orderRepository.cancelOrderAndReleaseInventory).not.toHaveBeenCalled();
+    });
+
+    it('should also save additional fields when confirming with adminNote', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.confirmOrderAndCommitInventory.mockResolvedValue(true);
+      orderRepository.save.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.CONFIRMED,
+        adminNote: 'Confirmed by admin',
+      } as OrderModel);
+
+      await service.update('order-uuid', {
+        status: OrderStatus.CONFIRMED,
+        adminNote: 'Confirmed by admin',
+      });
+
+      expect(orderRepository.confirmOrderAndCommitInventory).toHaveBeenCalledWith(
+        mockOrder.id,
+      );
+      expect(orderRepository.save).toHaveBeenCalled();
+    });
+
+    it('should call cancelOrderAndReleaseInventory when cancelling an order', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.cancelOrderAndReleaseInventory.mockResolvedValue(true);
+
+      await service.update('order-uuid', { status: OrderStatus.CANCELLED });
+
+      expect(orderRepository.cancelOrderAndReleaseInventory).toHaveBeenCalledWith(
+        mockOrder.id,
+      );
+      expect(orderRepository.confirmOrderAndCommitInventory).not.toHaveBeenCalled();
+    });
+
+    it('should also save additional fields when cancelling with adminNote', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.cancelOrderAndReleaseInventory.mockResolvedValue(true);
+      orderRepository.save.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.CANCELLED,
+        adminNote: 'Cancelled by admin',
+      } as OrderModel);
+
+      await service.update('order-uuid', {
+        status: OrderStatus.CANCELLED,
+        adminNote: 'Cancelled by admin',
+      });
+
+      expect(orderRepository.cancelOrderAndReleaseInventory).toHaveBeenCalledWith(
+        mockOrder.id,
+      );
+      expect(orderRepository.save).toHaveBeenCalled();
+    });
+
+    it('should not call inventory methods when transitioning to non-confirmed/cancelled status', async () => {
+      orderRepository.findById.mockResolvedValue(mockOrder);
+      orderRepository.save.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.DELIVERED,
+      } as OrderModel);
+
+      await service.update('order-uuid', { status: OrderStatus.DELIVERED });
+
+      expect(orderRepository.confirmOrderAndCommitInventory).not.toHaveBeenCalled();
+      expect(orderRepository.cancelOrderAndReleaseInventory).not.toHaveBeenCalled();
     });
   });
 

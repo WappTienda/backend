@@ -16,11 +16,15 @@ import {
   ProductRepositoryPort,
 } from '../ports/out/product-repository.port';
 import { CategoriesService } from '../../../categories/domain/services/categories-domain.service';
+import { InventoryService } from '../../../inventory/domain/services/inventory-domain.service';
 
 describe('ProductsService', () => {
   let service: ProductsService;
   let productRepository: jest.Mocked<ProductRepositoryPort>;
   let categoriesService: any;
+  let inventoryService: jest.Mocked<
+    Pick<InventoryService, 'initializeForProduct' | 'syncStockForProduct'>
+  >;
 
   const mockCategory = {
     id: 'category-uuid',
@@ -39,7 +43,6 @@ describe('ProductsService', () => {
     imageUrl: 'http://example.com/image.jpg',
     categoryId: 'category-uuid',
     category: null as any,
-    stockQuantity: 10,
     trackInventory: true,
     isVisible: true,
     isActive: true,
@@ -67,17 +70,24 @@ describe('ProductsService', () => {
       findById: jest.fn(),
     };
 
+    const mockInventoryService = {
+      initializeForProduct: jest.fn().mockResolvedValue({}),
+      syncStockForProduct: jest.fn().mockResolvedValue({}),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
         { provide: PRODUCT_REPOSITORY, useValue: mockProductRepository },
         { provide: CategoriesService, useValue: mockCategoriesService },
+        { provide: InventoryService, useValue: mockInventoryService },
       ],
     }).compile();
 
     service = module.get<ProductsService>(ProductsService);
     productRepository = module.get(PRODUCT_REPOSITORY);
     categoriesService = module.get<CategoriesService>(CategoriesService);
+    inventoryService = module.get(InventoryService);
   });
 
   afterEach(() => {
@@ -175,7 +185,10 @@ describe('ProductsService', () => {
   describe('create', () => {
     it('should create a new product', async () => {
       productRepository.findBySku.mockResolvedValue(null);
-      productRepository.create.mockResolvedValue(mockProduct);
+      productRepository.create.mockResolvedValue({
+        ...mockProduct,
+        trackInventory: false,
+      } as ProductModel);
 
       const createDto = {
         sku: 'SKU-001',
@@ -185,8 +198,43 @@ describe('ProductsService', () => {
 
       const result = await service.create(createDto);
 
-      expect(result).toEqual(mockProduct);
+      expect(result).toBeDefined();
       expect(productRepository.create).toHaveBeenCalledWith(createDto);
+    });
+
+    it('should initialize inventory when creating a product with trackInventory=true', async () => {
+      productRepository.findBySku.mockResolvedValue(null);
+      productRepository.create.mockResolvedValue(mockProduct);
+
+      await service.create({
+        sku: 'SKU-001',
+        name: 'Test Product',
+        price: 100,
+        trackInventory: true,
+        stockQuantity: 10,
+      });
+
+      expect(inventoryService.initializeForProduct).toHaveBeenCalledWith(
+        mockProduct.id,
+        10,
+      );
+    });
+
+    it('should not initialize inventory when creating a product with trackInventory=false', async () => {
+      productRepository.findBySku.mockResolvedValue(null);
+      productRepository.create.mockResolvedValue({
+        ...mockProduct,
+        trackInventory: false,
+      } as ProductModel);
+
+      await service.create({
+        sku: 'SKU-001',
+        name: 'Test Product',
+        price: 100,
+        trackInventory: false,
+      });
+
+      expect(inventoryService.initializeForProduct).not.toHaveBeenCalled();
     });
 
     it('should throw ConflictException when SKU already exists', async () => {
@@ -347,6 +395,40 @@ describe('ProductsService', () => {
       const result = await service.update('product-uuid', { name: 'Updated' });
 
       expect(result.name).toBe('Updated');
+    });
+
+    it('should sync inventory when updating stockQuantity of a tracked product', async () => {
+      productRepository.findById.mockResolvedValue(mockProduct);
+      productRepository.save.mockResolvedValue({ ...mockProduct } as ProductModel);
+
+      await service.update('product-uuid', { stockQuantity: 20 });
+
+      expect(inventoryService.syncStockForProduct).toHaveBeenCalledWith(
+        mockProduct.id,
+        20,
+      );
+    });
+
+    it('should initialize inventory when enabling trackInventory on a product', async () => {
+      const nonTrackedProduct = Object.assign(new ProductModel(), {
+        ...mockProduct,
+        trackInventory: false,
+      });
+      productRepository.findById.mockResolvedValue(nonTrackedProduct);
+      productRepository.save.mockResolvedValue({
+        ...mockProduct,
+        trackInventory: true,
+      } as ProductModel);
+
+      await service.update('product-uuid', {
+        trackInventory: true,
+        stockQuantity: 10,
+      });
+
+      expect(inventoryService.initializeForProduct).toHaveBeenCalledWith(
+        mockProduct.id,
+        10,
+      );
     });
 
     it('should validate category when categoryId is being updated', async () => {

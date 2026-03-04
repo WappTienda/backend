@@ -44,9 +44,6 @@ export class Product {
   @JoinColumn({ name: 'categoryId' })
   category: Category;
 
-  @Column({ default: 0 })
-  stockQuantity: number;
-
   @Column({ default: false })
   trackInventory: boolean;
 
@@ -67,10 +64,5 @@ export class Product {
 
   get effectivePrice(): number {
     return this.salePrice && this.salePrice > 0 ? this.salePrice : this.price;
-  }
-
-  get isInStock(): boolean {
-    if (!this.trackInventory) return true;
-    return this.stockQuantity > 0;
   }
 }

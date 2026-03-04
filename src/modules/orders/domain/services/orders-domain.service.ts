@@ -2,7 +2,6 @@ import {
   Injectable,
   Inject,
   NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
 import { OrderModel, OrderStatus } from '../models/order.model';
 import {
@@ -71,18 +70,6 @@ export class OrdersService implements OrdersUseCasePort {
         itemDto.productId,
       );
 
-      if (!product.isInStock) {
-        throw new BadRequestException(
-          `Product ${product.name} is out of stock`,
-        );
-      }
-
-      if (product.trackInventory && product.stockQuantity < itemDto.quantity) {
-        throw new BadRequestException(
-          `Insufficient stock for product ${product.name}`,
-        );
-      }
-
       const unitPrice =
         product.salePrice && product.salePrice > 0
           ? product.salePrice
@@ -117,8 +104,30 @@ export class OrdersService implements OrdersUseCasePort {
 
   async update(id: string, dto: UpdateOrderDto): Promise<OrderModel> {
     const order = await this.findById(id);
-    Object.assign(order, dto);
-    await this.orderRepository.save(order);
+
+    if (dto.status === OrderStatus.CONFIRMED) {
+      await this.orderRepository.confirmOrderAndCommitInventory(order.id);
+      // Save any remaining fields (e.g., adminNote) without overwriting the status
+      const { status: _status, ...otherFields } = dto;
+      if (Object.keys(otherFields).length > 0) {
+        Object.assign(order, otherFields);
+        order.status = OrderStatus.CONFIRMED;
+        await this.orderRepository.save(order);
+      }
+    } else if (dto.status === OrderStatus.CANCELLED) {
+      await this.orderRepository.cancelOrderAndReleaseInventory(order.id);
+      // Save any remaining fields (e.g., adminNote) without overwriting the status
+      const { status: _status, ...otherFields } = dto;
+      if (Object.keys(otherFields).length > 0) {
+        Object.assign(order, otherFields);
+        order.status = OrderStatus.CANCELLED;
+        await this.orderRepository.save(order);
+      }
+    } else {
+      Object.assign(order, dto);
+      await this.orderRepository.save(order);
+    }
+
     return this.findById(id);
   }
 

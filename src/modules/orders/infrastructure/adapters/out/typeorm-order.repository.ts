@@ -5,7 +5,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Order } from '../../entities/order.entity';
 import { OrderItem } from '../../entities/order-item.entity';
 import { OrderMapper } from '../../mappers/order.mapper';
-import { OrderModel } from '../../../domain/models/order.model';
+import { OrderModel, OrderStatus } from '../../../domain/models/order.model';
 import {
   OrderRepositoryPort,
   FindOrdersQuery,
@@ -13,7 +13,7 @@ import {
   CreatePublicOrderData,
 } from '../../../domain/ports/out/order-repository.port';
 import { Customer } from '../../../../customers/infrastructure/entities/customer.entity';
-import { Product } from '../../../../products/infrastructure/entities/product.entity';
+import { Inventory } from '../../../../inventory/infrastructure/entities/inventory.entity';
 
 @Injectable()
 export class TypeOrmOrderRepository implements OrderRepositoryPort {
@@ -123,31 +123,129 @@ export class TypeOrmOrderRepository implements OrderRepositoryPort {
 
       const saved = await manager.save(order);
 
-      // Atomically reduce stock for products that track inventory
+      // Atomically reserve stock in inventory for products that track inventory
       for (const item of data.items) {
         const updateResult = await manager
           .createQueryBuilder()
-          .update(Product)
-          .set({ stockQuantity: () => '"stockQuantity" - :qty' })
+          .update(Inventory)
+          .set({ reservedQuantity: () => '"reservedQuantity" + :qty' })
           .where(
-            '"id" = :id AND "trackInventory" = true AND "stockQuantity" >= :qty',
-            { id: item.productId, qty: item.quantity },
+            '"productId" = :productId AND ("stockQuantity" - "reservedQuantity") >= :qty',
+            { productId: item.productId, qty: item.quantity },
           )
           .execute();
 
         if (updateResult.affected === 0) {
-          const product = await manager.findOne(Product, {
-            where: { id: item.productId },
+          const inventory = await manager.findOne(Inventory, {
+            where: { productId: item.productId },
           });
-          if (product?.trackInventory) {
+          if (inventory) {
             throw new BadRequestException(
               `Insufficient stock for product ${item.productName}`,
             );
           }
+          // No inventory record means product does not track inventory — skip
         }
       }
 
       return OrderMapper.toDomain(saved);
+    });
+  }
+
+  async confirmOrderAndCommitInventory(orderId: string): Promise<boolean> {
+    return this.dataSource.transaction(async (manager) => {
+      // Atomically transition to CONFIRMED only from a reservable state
+      const updateResult = await manager
+        .createQueryBuilder()
+        .update(Order)
+        .set({ status: OrderStatus.CONFIRMED })
+        .where('"id" = :id AND "status" IN (:...statuses)', {
+          id: orderId,
+          statuses: [OrderStatus.PENDING, OrderStatus.CONTACTED],
+        })
+        .execute();
+
+      if (updateResult.affected === 0) {
+        return false;
+      }
+
+      const items = await manager.find(OrderItem, { where: { orderId } });
+
+      for (const item of items) {
+        // Commit the reservation: deduct from stockQuantity and reservedQuantity
+        await manager
+          .createQueryBuilder()
+          .update(Inventory)
+          .set({
+            stockQuantity: () => '"stockQuantity" - :qty',
+            reservedQuantity: () => '"reservedQuantity" - :qty',
+          })
+          .where(
+            '"productId" = :productId AND "reservedQuantity" >= :qty AND "stockQuantity" >= :qty',
+            { productId: item.productId, qty: item.quantity },
+          )
+          .execute();
+      }
+
+      return true;
+    });
+  }
+
+  async cancelOrderAndReleaseInventory(orderId: string): Promise<boolean> {
+    return this.dataSource.transaction(async (manager) => {
+      // Fetch current order to determine the right inventory action
+      const order = await manager.findOne(Order, { where: { id: orderId } });
+      if (!order || order.status === OrderStatus.CANCELLED) {
+        return false;
+      }
+
+      const previousStatus = order.status;
+
+      // Atomically update status to CANCELLED
+      await manager
+        .createQueryBuilder()
+        .update(Order)
+        .set({ status: OrderStatus.CANCELLED })
+        .where('"id" = :id', { id: orderId })
+        .execute();
+
+      const items = await manager.find(OrderItem, { where: { orderId } });
+
+      if (
+        previousStatus === OrderStatus.PENDING ||
+        previousStatus === OrderStatus.CONTACTED
+      ) {
+        // Release reservation: decrease reservedQuantity
+        for (const item of items) {
+          await manager
+            .createQueryBuilder()
+            .update(Inventory)
+            .set({ reservedQuantity: () => '"reservedQuantity" - :qty' })
+            .where('"productId" = :productId AND "reservedQuantity" >= :qty', {
+              productId: item.productId,
+              qty: item.quantity,
+            })
+            .execute();
+        }
+      } else if (
+        previousStatus === OrderStatus.CONFIRMED ||
+        previousStatus === OrderStatus.DELIVERED
+      ) {
+        // Restore stock: reservation was already committed, so increase stockQuantity
+        for (const item of items) {
+          await manager
+            .createQueryBuilder()
+            .update(Inventory)
+            .set({ stockQuantity: () => '"stockQuantity" + :qty' })
+            .where('"productId" = :productId', {
+              productId: item.productId,
+              qty: item.quantity,
+            })
+            .execute();
+        }
+      }
+
+      return true;
     });
   }
 
@@ -167,3 +265,4 @@ export class TypeOrmOrderRepository implements OrderRepositoryPort {
     }
   }
 }
+

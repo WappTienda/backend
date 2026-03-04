@@ -22,7 +22,6 @@ export class ProductMapper {
           isActive: entity.category.isActive,
         }
       : null;
-    model.stockQuantity = entity.stockQuantity;
     model.trackInventory = entity.trackInventory;
     model.isVisible = entity.isVisible;
     model.isActive = entity.isActive;
@@ -42,8 +41,6 @@ export class ProductMapper {
     if (model.salePrice !== undefined) entity.salePrice = model.salePrice;
     if (model.imageUrl !== undefined) entity.imageUrl = model.imageUrl;
     if (model.categoryId !== undefined) entity.categoryId = model.categoryId;
-    if (model.stockQuantity !== undefined)
-      entity.stockQuantity = model.stockQuantity;
     if (model.trackInventory !== undefined)
       entity.trackInventory = model.trackInventory;
     if (model.isVisible !== undefined) entity.isVisible = model.isVisible;

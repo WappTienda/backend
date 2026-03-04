@@ -17,7 +17,6 @@ export class ProductModel {
   imageUrl: string;
   categoryId: string;
   category: ProductCategory | null;
-  stockQuantity: number;
   trackInventory: boolean;
   isVisible: boolean;
   isActive: boolean;
@@ -27,10 +26,5 @@ export class ProductModel {
 
   get effectivePrice(): number {
     return this.salePrice && this.salePrice > 0 ? this.salePrice : this.price;
-  }
-
-  get isInStock(): boolean {
-    if (!this.trackInventory) return true;
-    return this.stockQuantity > 0;
   }
 }

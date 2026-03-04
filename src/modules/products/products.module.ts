@@ -6,9 +6,10 @@ import { ProductsController } from './infrastructure/adapters/in/products.contro
 import { TypeOrmProductRepository } from './infrastructure/adapters/out/typeorm-product.repository';
 import { PRODUCT_REPOSITORY } from './domain/ports/out/product-repository.port';
 import { CategoriesModule } from '../categories/categories.module';
+import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product]), CategoriesModule],
+  imports: [TypeOrmModule.forFeature([Product]), CategoriesModule, InventoryModule],
   providers: [
     ProductsService,
     {
