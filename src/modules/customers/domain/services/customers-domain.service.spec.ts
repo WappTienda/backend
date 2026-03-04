@@ -29,6 +29,7 @@ describe('CustomersService', () => {
     findByPhone: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+    delete: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -173,6 +174,26 @@ describe('CustomersService', () => {
       await expect(
         service.update('unknown-uuid', { name: 'Test' }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('delete', () => {
+    it('should soft-delete a customer', async () => {
+      customerRepository.findById.mockResolvedValue(mockCustomer);
+      customerRepository.delete.mockResolvedValue(undefined);
+
+      await service.delete('customer-uuid');
+
+      expect(customerRepository.findById).toHaveBeenCalledWith('customer-uuid');
+      expect(customerRepository.delete).toHaveBeenCalledWith('customer-uuid');
+    });
+
+    it('should throw NotFoundException when customer not found', async () => {
+      customerRepository.findById.mockResolvedValue(null);
+
+      await expect(service.delete('unknown-uuid')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

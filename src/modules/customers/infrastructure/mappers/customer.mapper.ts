@@ -9,6 +9,7 @@ export class CustomerMapper {
     model.phone = entity.phone;
     model.address = entity.address;
     model.notes = entity.notes;
+    model.isActive = entity.isActive;
     model.orders = entity.orders ?? [];
     model.createdAt = entity.createdAt;
     model.updatedAt = entity.updatedAt;
@@ -22,6 +23,7 @@ export class CustomerMapper {
     if (model.phone !== undefined) entity.phone = model.phone;
     if (model.address !== undefined) entity.address = model.address;
     if (model.notes !== undefined) entity.notes = model.notes;
+    if (model.isActive !== undefined) entity.isActive = model.isActive;
     return entity;
   }
 }

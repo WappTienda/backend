@@ -63,4 +63,9 @@ export class CustomersService implements CustomerUseCasePort {
     Object.assign(customer, dto);
     return this.customerRepository.save(customer);
   }
+
+  async delete(id: string): Promise<void> {
+    await this.findById(id);
+    await this.customerRepository.delete(id);
+  }
 }

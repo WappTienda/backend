@@ -62,4 +62,8 @@ export class TypeOrmCustomerRepository implements CustomerRepositoryPort {
     const saved = await this.customerRepository.save(entity);
     return CustomerMapper.toDomain(saved);
   }
+
+  async delete(id: string): Promise<void> {
+    await this.customerRepository.update(id, { isActive: false });
+  }
 }

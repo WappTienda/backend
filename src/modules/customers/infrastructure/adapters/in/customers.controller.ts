@@ -1,11 +1,15 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
   ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,7 +18,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { CustomersService } from '../../../domain/services/customers-domain.service';
-import { UpdateCustomerDto } from '../../../application/dto';
+import { CreateCustomerDto, UpdateCustomerDto } from '../../../application/dto';
 import { CustomerModel } from '../../../domain/models/customer.model';
 import {
   PaginationQueryDto,
@@ -46,6 +50,13 @@ export class CustomersController {
     return this.customersService.findById(id);
   }
 
+  @Post()
+  @ApiOperation({ summary: 'Create a new customer (admin)' })
+  @ApiResponse({ status: 201 })
+  async create(@Body() dto: CreateCustomerDto): Promise<CustomerModel> {
+    return this.customersService.create(dto);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update customer (admin)' })
   @ApiResponse({ status: 200 })
@@ -55,5 +66,14 @@ export class CustomersController {
     @Body() dto: UpdateCustomerDto,
   ): Promise<CustomerModel> {
     return this.customersService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Soft delete a customer (admin)' })
+  @ApiResponse({ status: 204, description: 'Customer deactivated' })
+  @ApiResponse({ status: 404, description: 'Customer not found' })
+  async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.customersService.delete(id);
   }
 }

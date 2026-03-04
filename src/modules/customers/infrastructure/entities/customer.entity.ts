@@ -27,6 +27,9 @@ export class Customer {
   @Column({ type: 'text', nullable: true })
   notes: string;
 
+  @Column({ default: true })
+  isActive: boolean;
+
   @OneToMany(() => Order, (order) => order.customer)
   orders: Order[];
 
