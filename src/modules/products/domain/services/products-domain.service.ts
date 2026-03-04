@@ -5,7 +5,7 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { ProductModel } from '../models/product.model';
+import { ProductModel, ProductImageModel } from '../models/product.model';
 import {
   PRODUCT_REPOSITORY,
   ProductRepositoryPort,
@@ -15,6 +15,7 @@ import {
   CreateProductDto,
   UpdateProductDto,
   ProductQueryDto,
+  ProductImageDto,
 } from '../../application/dto';
 import { PaginatedResponseDto } from '../../../../common/dto';
 import { CategoriesService } from '../../../categories/domain/services/categories-domain.service';
@@ -76,7 +77,13 @@ export class ProductsService implements ProductsUseCasePort {
 
     this.validatePricing(dto.price, dto.salePrice);
 
-    return this.productRepository.create(dto);
+    const { images, ...rest } = dto;
+    const data: Partial<ProductModel> = { ...rest };
+    if (images) {
+      data.images = this.mapImageDtos(images);
+    }
+
+    return this.productRepository.create(data);
   }
 
   async update(id: string, dto: UpdateProductDto): Promise<ProductModel> {
@@ -91,7 +98,11 @@ export class ProductsService implements ProductsUseCasePort {
       dto.salePrice !== undefined ? dto.salePrice : product.salePrice;
     this.validatePricing(newPrice, newSalePrice);
 
-    Object.assign(product, dto);
+    const { images, ...rest } = dto;
+    Object.assign(product, rest);
+    if (images !== undefined) {
+      product.images = this.mapImageDtos(images);
+    }
     return this.productRepository.save(product);
   }
 
@@ -107,6 +118,18 @@ export class ProductsService implements ProductsUseCasePort {
     }
     await this.productRepository.restore(id);
     return this.findById(id);
+  }
+
+  /**
+   * Maps image DTOs to ProductImageModel objects
+   * @param images - Array of image DTOs
+   */
+  private mapImageDtos(images: ProductImageDto[]): ProductImageModel[] {
+    return images.map((img, index) => ({
+      url: img.url,
+      order: img.order ?? index,
+      alt: img.alt ?? null,
+    }));
   }
 
   /**

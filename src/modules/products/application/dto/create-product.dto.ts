@@ -8,7 +8,29 @@ import {
   MinLength,
   MaxLength,
   Min,
+  IsArray,
+  ValidateNested,
+  IsInt,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class ProductImageDto {
+  @ApiProperty({ example: 'https://example.com/image.jpg' })
+  @IsString()
+  url: string;
+
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  order?: number;
+
+  @ApiPropertyOptional({ example: 'Product front view' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  alt?: string;
+}
 
 export class CreateProductDto {
   @ApiProperty({ example: 'SKU-001' })
@@ -46,6 +68,13 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   imageUrl?: string;
+
+  @ApiPropertyOptional({ type: [ProductImageDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductImageDto)
+  images?: ProductImageDto[];
 
   @ApiPropertyOptional()
   @IsOptional()

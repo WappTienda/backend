@@ -7,6 +7,14 @@ export interface ProductCategory {
   isActive: boolean;
 }
 
+export interface ProductImageModel {
+  id?: string;
+  productId?: string;
+  url: string;
+  order: number;
+  alt: string | null;
+}
+
 export class ProductModel {
   id: string;
   sku: string;
@@ -15,6 +23,7 @@ export class ProductModel {
   price: number;
   salePrice: number;
   imageUrl: string;
+  images: ProductImageModel[];
   categoryId: string;
   category: ProductCategory | null;
   stockQuantity: number;
