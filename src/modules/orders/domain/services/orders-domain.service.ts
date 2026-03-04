@@ -2,7 +2,6 @@ import {
   Injectable,
   Inject,
   NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
 import { OrderModel, OrderStatus } from '../models/order.model';
 import {
@@ -70,18 +69,6 @@ export class OrdersService implements OrdersUseCasePort {
       const product = await this.productsService.findByIdPublic(
         itemDto.productId,
       );
-
-      if (!product.isInStock) {
-        throw new BadRequestException(
-          `Product ${product.name} is out of stock`,
-        );
-      }
-
-      if (product.trackInventory && product.stockQuantity < itemDto.quantity) {
-        throw new BadRequestException(
-          `Insufficient stock for product ${product.name}`,
-        );
-      }
 
       const unitPrice =
         product.salePrice && product.salePrice > 0

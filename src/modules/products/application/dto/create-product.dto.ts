@@ -52,7 +52,11 @@ export class CreateProductDto {
   @IsUUID()
   categoryId?: string;
 
-  @ApiPropertyOptional({ example: 100 })
+  @ApiPropertyOptional({
+    example: 100,
+    description:
+      'Initial stock quantity. Only used when trackInventory is true — sets the opening stock in the inventory record.',
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)

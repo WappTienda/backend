@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders-domain.service';
 import { OrderModel, OrderStatus } from '../models/order.model';
 import {
@@ -30,9 +30,7 @@ describe('OrdersService', () => {
     sku: 'SKU-001',
     price: 100,
     salePrice: 80,
-    isInStock: true,
     trackInventory: true,
-    stockQuantity: 10,
   };
 
   const mockOrder: OrderModel = Object.assign(new OrderModel(), {
@@ -188,27 +186,11 @@ describe('OrdersService', () => {
       );
     });
 
-    it('should throw BadRequestException when product is out of stock', async () => {
-      productsService.findByIdPublic.mockResolvedValue({
-        ...mockProduct,
-        isInStock: false,
-      } as any);
-
-      await expect(
-        service.createPublicOrder({
-          customerName: 'John Doe',
-          customerPhone: '+1234567890',
-          items: [{ productId: 'product-uuid', quantity: 1 }],
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should throw BadRequestException when quantity exceeds available stock', async () => {
-      productsService.findByIdPublic.mockResolvedValue({
-        ...mockProduct,
-        trackInventory: true,
-        stockQuantity: 2,
-      } as any);
+    it('should throw when repository rejects due to insufficient stock', async () => {
+      productsService.findByIdPublic.mockResolvedValue(mockProduct as any);
+      orderRepository.createPublicOrder.mockRejectedValue(
+        new Error('Insufficient stock for product Test Product'),
+      );
 
       await expect(
         service.createPublicOrder({
@@ -216,15 +198,13 @@ describe('OrdersService', () => {
           customerPhone: '+1234567890',
           items: [{ productId: 'product-uuid', quantity: 5 }],
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Insufficient stock for product Test Product');
     });
 
-    it('should create order for non-tracked inventory product when stockQuantity is zero', async () => {
+    it('should create order for non-tracked product', async () => {
       productsService.findByIdPublic.mockResolvedValue({
         ...mockProduct,
         trackInventory: false,
-        stockQuantity: 0,
-        isInStock: true,
       } as any);
       orderRepository.createPublicOrder.mockResolvedValue(mockOrder);
       orderRepository.findById.mockResolvedValue(mockOrder);

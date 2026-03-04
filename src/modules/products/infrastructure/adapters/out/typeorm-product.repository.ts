@@ -38,8 +38,8 @@ export class TypeOrmProductRepository implements ProductRepositoryPort {
     }
 
     if (onlyInStock) {
-      qb.andWhere(
-        '(product.trackInventory = false OR product.stockQuantity > 0)',
+      qb.leftJoin('inventory', 'inv', '"inv"."productId" = product.id').andWhere(
+        '(product.trackInventory = false OR (inv.stockQuantity - inv.reservedQuantity) > 0)',
       );
     }
 

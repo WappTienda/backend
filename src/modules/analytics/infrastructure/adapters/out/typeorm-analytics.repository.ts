@@ -92,8 +92,11 @@ export class TypeOrmAnalyticsRepository implements AnalyticsRepositoryPort {
     });
     const productsOutOfStock = await this.productRepository
       .createQueryBuilder('product')
+      .leftJoin('inventory', 'inv', '"inv"."productId" = product.id')
       .where('product.trackInventory = :track', { track: true })
-      .andWhere('product.stockQuantity <= 0')
+      .andWhere(
+        '(inv.stockQuantity IS NULL OR (inv.stockQuantity - inv.reservedQuantity) <= 0)',
+      )
       .getCount();
 
     // Customers stats

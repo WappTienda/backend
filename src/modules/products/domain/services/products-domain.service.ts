@@ -83,7 +83,7 @@ export class ProductsService implements ProductsUseCasePort {
     if (product.trackInventory) {
       await this.inventoryService.initializeForProduct(
         product.id,
-        product.stockQuantity ?? 0,
+        dto.stockQuantity ?? 0,
       );
     }
 
@@ -114,13 +114,13 @@ export class ProductsService implements ProductsUseCasePort {
         // Product just enabled inventory tracking — initialize inventory record
         await this.inventoryService.initializeForProduct(
           saved.id,
-          saved.stockQuantity ?? 0,
+          dto.stockQuantity ?? 0,
         );
       } else if (dto.stockQuantity !== undefined) {
         // Stock quantity updated for an already-tracked product — sync inventory
         await this.inventoryService.syncStockForProduct(
           saved.id,
-          saved.stockQuantity,
+          dto.stockQuantity,
         );
       }
     }

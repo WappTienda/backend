@@ -43,7 +43,6 @@ describe('ProductsService', () => {
     imageUrl: 'http://example.com/image.jpg',
     categoryId: 'category-uuid',
     category: null as any,
-    stockQuantity: 10,
     trackInventory: true,
     isVisible: true,
     isActive: true,
@@ -400,10 +399,7 @@ describe('ProductsService', () => {
 
     it('should sync inventory when updating stockQuantity of a tracked product', async () => {
       productRepository.findById.mockResolvedValue(mockProduct);
-      productRepository.save.mockResolvedValue({
-        ...mockProduct,
-        stockQuantity: 20,
-      } as ProductModel);
+      productRepository.save.mockResolvedValue({ ...mockProduct } as ProductModel);
 
       await service.update('product-uuid', { stockQuantity: 20 });
 
@@ -422,10 +418,12 @@ describe('ProductsService', () => {
       productRepository.save.mockResolvedValue({
         ...mockProduct,
         trackInventory: true,
-        stockQuantity: 10,
       } as ProductModel);
 
-      await service.update('product-uuid', { trackInventory: true });
+      await service.update('product-uuid', {
+        trackInventory: true,
+        stockQuantity: 10,
+      });
 
       expect(inventoryService.initializeForProduct).toHaveBeenCalledWith(
         mockProduct.id,
